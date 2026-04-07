@@ -43,10 +43,20 @@ class Datapoint:
     unit: Optional[str] = None
     normalized_value: Optional[str] = None
     confidence: float = 1.0
+    # NEW: Separate confidence types (per feedback)
+    extraction_confidence: Optional[float] = None  # Did we read the PDF correctly?
+    alignment_confidence: Optional[float] = None   # Did we map to the right ACER datapoint?
     source_page: Optional[str] = None
     source_location: Optional[str] = None
     requirement_sources: list[str] = field(default_factory=list)
     status: str = "verified"
+    
+    def __post_init__(self):
+        # Backward compatibility: if extraction_confidence not set, use overall confidence
+        if self.extraction_confidence is None:
+            self.extraction_confidence = self.confidence
+        if self.alignment_confidence is None:
+            self.alignment_confidence = 1.0  # Assume perfect alignment unless specified
     
     @property
     def confidence_level(self) -> ConfidenceLevel:
@@ -62,6 +72,14 @@ class Datapoint:
             "unit": self.unit,
             "normalized": self.normalized_value,
             "confidence": self.confidence,
+            # NEW: Include both confidence types in export
+            "extractionConfidence": self.extraction_confidence,
+            "alignmentConfidence": self.alignment_confidence,
+            "confidenceBreakdown": {
+                "extraction": self.extraction_confidence,
+                "alignment": self.alignment_confidence,
+                "overall": self.confidence
+            },
             "sourcePage": self.source_page,
             "sourceLocation": self.source_location,
             "requirementSources": self.requirement_sources,
@@ -173,6 +191,53 @@ class AcerGraph:
         "hasRequirementSource": "Compliance standards referenced"
     }
     
+    # FIX #9: Controlled vocabulary for asset types (aligned with UNSPSC/ASHRAE)
+    ASSET_TYPE_VOCABULARY = {
+        # HVAC Equipment
+        "RTU": {"label": "Rooftop Unit", "category": "HVAC", "unspsc": "40101701", "aliases": ["Rooftop HVAC Unit", "RTU", "Rooftop HVAC"]},
+        "AHU": {"label": "Air Handling Unit", "category": "HVAC", "unspsc": "40101701", "aliases": ["MAU", "Makeup Air Unit", "Air Handler"]},
+        "CHILLER": {"label": "Chiller", "category": "HVAC", "unspsc": "40101702", "aliases": ["Water Chiller", "Centrifugal Chiller", "Absorption Chiller"]},
+        "BOILER": {"label": "Boiler", "category": "HVAC", "unspsc": "40101703", "aliases": ["Steam Boiler", "Hot Water Boiler"]},
+        "VRF": {"label": "VRF/VRV System", "category": "HVAC", "unspsc": "40101701", "aliases": ["VRV", "Variable Refrigerant Flow", "Daikin VRV", "VRF System"]},
+        "HEAT_PUMP": {"label": "Heat Pump", "category": "HVAC", "unspsc": "40101701", "aliases": ["Air Source Heat Pump", "Ground Source Heat Pump", "ASHP", "GSHP"]},
+        "FAN_COIL": {"label": "Fan Coil Unit", "category": "HVAC", "unspsc": "40101701", "aliases": ["FCU", "Induction Unit"]},
+        "COOLING_TOWER": {"label": "Cooling Tower", "category": "HVAC", "unspsc": "40101702", "aliases": ["Dry Cooler", "Fluid Cooler"]},
+        
+        # Electrical
+        "GENERATOR": {"label": "Generator", "category": "Electrical", "unspsc": "26101601", "aliases": [" Genset", "Emergency Generator"]},
+        "UPS": {"label": "UPS", "category": "Electrical", "unspsc": "39111600", "aliases": ["Uninterruptible Power Supply"]},
+        "TRANSFORMER": {"label": "Transformer", "category": "Electrical", "unspsc": "26101601", "aliases": ["Dry Type Transformer", "Oil Filled Transformer"]},
+        
+        # Building Systems
+        "PUMP": {"label": "Pump", "category": "Plumbing", "unspsc": "40150000", "aliases": ["Circulator Pump", "Booster Pump", "Sump Pump"]},
+        "COMPRESSOR": {"label": "Compressor", "category": "HVAC", "unspsc": "40101701", "aliases": ["Air Compressor", "Refrigerant Compressor"]},
+        
+        # Controls
+        "BMS": {"label": "Building Management System", "category": "Controls", "unspsc": "41100000", "aliases": ["Building Automation System", "BAS", "Control System"]},
+        "CONTROLLER": {"label": "Controller", "category": "Controls", "unspsc": "41100000", "aliases": ["HVAC Controller", "DDC Controller"]},
+    }
+    
+    @classmethod
+    def normalize_asset_type(cls, asset_type: str) -> dict:
+        """Normalize an asset type string to controlled vocabulary."""
+        if not asset_type:
+            return {"code": "UNKNOWN", "label": asset_type, "category": None, "unspsc": None}
+        
+        asset_upper = asset_type.upper().strip()
+        
+        # Direct match
+        for code, vocab in cls.ASSET_TYPE_VOCABULARY.items():
+            if code == asset_upper or vocab["label"].upper() == asset_upper:
+                return {"code": code, "label": vocab["label"], "category": vocab["category"], "unspsc": vocab["unspsc"]}
+            
+            # Alias match
+            for alias in vocab.get("aliases", []):
+                if alias.upper() in asset_upper or asset_upper in alias.upper():
+                    return {"code": code, "label": vocab["label"], "category": vocab["category"], "unspsc": vocab["unspsc"]}
+        
+        # No match found - return with note
+        return {"code": "FREE_TEXT", "label": asset_type, "category": "Unknown", "unspsc": None, "note": "Not in vocabulary - consider adding"}
+    
     def get_relationship(self, name: str) -> Optional[Relationship]:
         """Get relationship by name (handles both snake_case and camelCase)."""
         # Try direct attribute first
@@ -245,7 +310,9 @@ class AcerGraph:
             relationships[display_name] = rel.to_dict()
         
         return {
-            "$schema": "https://acer.build/v1/acer-graph.schema.json",
+            # FIX: Placeholder schema until published
+            "$schema": "https://placeholder.acer.build/v1/acer-graph.schema.json",
+            "$schemaNote": "Schema pending publication at acer.build",
             "document": {
                 "name": self.document_name,
                 "sourceFile": self.source_file or self.document_name

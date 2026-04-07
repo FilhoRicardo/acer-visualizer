@@ -23,7 +23,7 @@ from models import (
     create_daikin_vrv_graph
 )
 from extraction import extract_from_text
-from graph_view import create_acer_graph_view, render_graph_html
+from obsidian_graph import create_obsidian_graph_html, render_obsidian_graph, render_extraction_vs_alignment_info
 
 
 # Page config
@@ -593,7 +593,7 @@ def render_sample_documents():
 
 
 def render_graph_network_view():
-    """Interactive DTDL-style graph visualization."""
+    """Interactive Obsidian-style graph visualization."""
     
     # Check for uploaded graph or use sample
     if 'current_graph' not in st.session_state:
@@ -608,11 +608,10 @@ def render_graph_network_view():
             st.caption(f"Document: {st.session_state.current_graph.document_name}")
         else:
             st.caption("Loading sample data...")
-            # Auto-load sample
             st.session_state.current_graph = create_carrier_rtu_graph()
     
     with col2:
-        if st.button("🔄 Refresh", use_container_width=True):
+        if st.button("Refresh", use_container_width=True):
             st.rerun()
     
     st.divider()
@@ -623,41 +622,17 @@ def render_graph_network_view():
         st.info("No graph loaded. Select a sample document or upload a PDF.")
         return
     
-    # Create and render the interactive graph
+    # Create and render the Obsidian-style graph
     with st.spinner("Generating graph visualization..."):
         try:
-            html = create_acer_graph_view(graph, height="650px")
-            render_graph_html(html)
+            render_obsidian_graph(graph, height="650px")
             
-            st.markdown("""
-            <div style="background: #1e1e1e; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
-                <strong style="color: white;">Graph Controls:</strong>
-                <ul style="color: #ccc; margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
-                    <li>🖱️ Drag nodes to reposition</li>
-                    <li>🔍 Scroll to zoom in/out</li>
-                    <li>👆 Hover for details</li>
-                    <li>📱 Pinch on mobile</li>
-                </ul>
-            </div>
-            """, unsafe_allow_html=True)
+            # Confidence info
+            render_extraction_vs_alignment_info()
             
         except Exception as e:
             st.error(f"Graph visualization error: {str(e)}")
             st.info("Try the Relationship Cards view instead.")
-    
-    # Legend
-    st.divider()
-    st.markdown("""
-    | Node Type | Color | Shape |
-    |-----------|-------|-------|
-    | Document | 🟣 Indigo | Rectangle |
-    | hasMetadata | 🟢 Green | Circle |
-    | hasEquipment | 🔵 Blue | Diamond |
-    | hasAssetType | 🟣 Purple | Triangle |
-    | hasDatapoint | 🟠 Amber | Star |
-    | hasImpactCategory | 🔴 Pink | Hexagon |
-    | hasRequirementSource | 🔴 Red | Square |
-    """)
 
 
 def render_settings():
