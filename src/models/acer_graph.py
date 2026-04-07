@@ -164,8 +164,22 @@ class AcerGraph:
     }
     
     def get_relationship(self, name: str) -> Optional[Relationship]:
-        """Get relationship by name."""
-        return getattr(self, name)
+        """Get relationship by name (handles both snake_case and camelCase)."""
+        # Try direct attribute first
+        if hasattr(self, name):
+            return getattr(self, name)
+        # Try snake_case conversion
+        snake_name = self._camel_to_snake(name)
+        if hasattr(self, snake_name):
+            return getattr(self, snake_name)
+        return None
+    
+    @staticmethod
+    def _camel_to_snake(name: str) -> str:
+        """Convert camelCase to snake_case."""
+        import re
+        s1 = re.sub('(.)([A-Z][a-z]+)', r'\1_\2', name)
+        return re.sub('([a-z0-9])([A-Z])', r'\1_\2', s1).lower()
     
     def get_all_relationships(self) -> list[tuple[str, Relationship]]:
         """Get all relationships with their names."""
