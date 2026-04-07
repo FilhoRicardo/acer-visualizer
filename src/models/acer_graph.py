@@ -156,11 +156,21 @@ class AcerGraph:
     # Display names (PascalCase)
     RELATIONSHIP_DISPLAY_NAMES = {
         "has_metadata": "hasMetadata",
-        "has_equipment": "hasEquipment",
+        "has_equipment": "hasEquipment", 
         "has_asset_type": "hasAssetType",
         "has_datapoint": "hasDatapoint",
         "has_impact_category": "hasImpactCategory",
         "has_requirement_source": "hasRequirementSource"
+    }
+    
+    # Descriptions for each relationship
+    RELATIONSHIP_DESCRIPTIONS = {
+        "hasMetadata": "Document metadata (auto-extracted)",
+        "hasEquipment": "Equipment identified in the document",
+        "hasAssetType": "Asset type classification",
+        "hasDatapoint": "Extracted technical specifications",
+        "hasImpactCategory": "Sustainability impact category",
+        "hasRequirementSource": "Compliance standards referenced"
     }
     
     def get_relationship(self, name: str) -> Optional[Relationship]:
