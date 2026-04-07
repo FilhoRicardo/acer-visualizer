@@ -18,9 +18,12 @@ from models import (
     RelationshipStatus,
     ConfidenceLevel,
     create_carrier_rtu_graph,
-    create_simple_example_graph
+    create_simple_example_graph,
+    create_trane_chiller_graph,
+    create_daikin_vrv_graph
 )
 from extraction import extract_from_text
+from graph_view import create_acer_graph_view, render_graph_html
 
 
 # Page config
@@ -172,7 +175,7 @@ def main():
         st.header("Navigation")
         page = st.radio(
             "Go to",
-            ["📊 ACER Graph View", "📄 Sample Documents", "📤 Upload PDF", "⚙️ Settings"],
+            ["🕸️ Graph View", "📊 Relationship Cards", "📄 Sample Documents", "📤 Upload PDF", "⚙️ Settings"],
             label_visibility="collapsed"
         )
         
@@ -191,7 +194,9 @@ def main():
         6. hasRequirementSource
         """)
     
-    if page == "📊 ACER Graph View":
+    if page == "🕸️ Graph View":
+        render_graph_network_view()
+    elif page == "📊 Relationship Cards":
         render_graph_view()
     elif page == "📄 Sample Documents":
         render_sample_documents()
@@ -565,6 +570,8 @@ def render_sample_documents():
     
     samples = {
         "Carrier 40RUS 060-8": create_carrier_rtu_graph,
+        "Trane CVHE 450": create_trane_chiller_graph,
+        "Daikin VRV IV": create_daikin_vrv_graph,
         "Simple Demo": create_simple_example_graph
     }
     
@@ -583,6 +590,74 @@ def render_sample_documents():
             **Datapoints:** {graph.total_datapoints} extracted  
             **Avg Confidence:** {graph.average_confidence:.0%}
             """)
+
+
+def render_graph_network_view():
+    """Interactive DTDL-style graph visualization."""
+    
+    # Check for uploaded graph or use sample
+    if 'current_graph' not in st.session_state:
+        st.session_state.current_graph = None
+    
+    # Toolbar
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        st.subheader("ACER Graph Network")
+        if st.session_state.current_graph:
+            st.caption(f"Document: {st.session_state.current_graph.document_name}")
+        else:
+            st.caption("Loading sample data...")
+            # Auto-load sample
+            st.session_state.current_graph = create_carrier_rtu_graph()
+    
+    with col2:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
+    
+    st.divider()
+    
+    # Get graph
+    graph = st.session_state.current_graph
+    if not graph:
+        st.info("No graph loaded. Select a sample document or upload a PDF.")
+        return
+    
+    # Create and render the interactive graph
+    with st.spinner("Generating graph visualization..."):
+        try:
+            html = create_acer_graph_view(graph, height="650px")
+            render_graph_html(html)
+            
+            st.markdown("""
+            <div style="background: #1e1e1e; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                <strong style="color: white;">Graph Controls:</strong>
+                <ul style="color: #ccc; margin: 0.5rem 0 0 0; padding-left: 1.5rem;">
+                    <li>🖱️ Drag nodes to reposition</li>
+                    <li>🔍 Scroll to zoom in/out</li>
+                    <li>👆 Hover for details</li>
+                    <li>📱 Pinch on mobile</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error(f"Graph visualization error: {str(e)}")
+            st.info("Try the Relationship Cards view instead.")
+    
+    # Legend
+    st.divider()
+    st.markdown("""
+    | Node Type | Color | Shape |
+    |-----------|-------|-------|
+    | Document | 🟣 Indigo | Rectangle |
+    | hasMetadata | 🟢 Green | Circle |
+    | hasEquipment | 🔵 Blue | Diamond |
+    | hasAssetType | 🟣 Purple | Triangle |
+    | hasDatapoint | 🟠 Amber | Star |
+    | hasImpactCategory | 🔴 Pink | Hexagon |
+    | hasRequirementSource | 🔴 Red | Square |
+    """)
 
 
 def render_settings():

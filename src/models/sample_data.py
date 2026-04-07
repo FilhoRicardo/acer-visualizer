@@ -330,3 +330,367 @@ def create_simple_example_graph() -> AcerGraph:
             source_location="User selected"
         )
     )
+
+
+def create_trane_chiller_graph() -> AcerGraph:
+    """Create sample ACER graph for Trane CVHE centrifugal chiller."""
+    
+    datapoints = [
+        # Energy metrics
+        Datapoint(
+            id=80,
+            aligned_datapoint="Primary Energy Demand (PED)",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="450,000",
+            unit="BTU/h",
+            normalized_value="131.9 kW",
+            confidence=0.91,
+            source_page="1",
+            source_location="Performance Data",
+            requirement_sources=["EU Tax", "ASHRAE 90.1"]
+        ),
+        Datapoint(
+            id=143,
+            aligned_datapoint="Effective Rated Output",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="420,000",
+            unit="BTU/h",
+            normalized_value="123.1 kW",
+            confidence=0.93,
+            source_page="1",
+            source_location="Performance Data",
+            requirement_sources=["EU Tax"]
+        ),
+        Datapoint(
+            id=152,
+            aligned_datapoint="COP",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="5.8",
+            confidence=0.95,
+            source_page="2",
+            source_location="Efficiency Ratings",
+            requirement_sources=["EU Tax", "ASHRAE 90.1"]
+        ),
+        Datapoint(
+            id=127,
+            aligned_datapoint="Energy Efficiency Class",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="A++",
+            confidence=0.88,
+            source_page="3",
+            source_location="Energy Label"
+        ),
+        
+        # Refrigerant
+        Datapoint(
+            id=92,
+            aligned_datapoint="Refrigerant Type",
+            impact_category="Climate Health",
+            impact_subcategory="Greenhouse Gas Emissions",
+            value="R-134a",
+            confidence=0.99,
+            source_page="2",
+            source_location="Refrigerant Data"
+        ),
+        Datapoint(
+            id=88,
+            aligned_datapoint="Global Warming Potential (GWP)",
+            impact_category="Climate Health",
+            impact_subcategory="Greenhouse Gas Emissions",
+            value="1,430",
+            unit="kg CO₂e",
+            confidence=0.96,
+            source_page="2",
+            source_location="Environmental Data"
+        ),
+        
+        # Physical
+        Datapoint(
+            id=160,
+            aligned_datapoint="Dimensions (L×W×H)",
+            impact_category="Asset Integrity",
+            impact_subcategory="Physical Characteristics",
+            value="96×52×72",
+            unit="in",
+            confidence=0.99,
+            source_page="3",
+            source_location="Dimensional Drawing"
+        ),
+        Datapoint(
+            id=163,
+            aligned_datapoint="Operating Weight",
+            impact_category="Asset Integrity",
+            impact_subcategory="Physical Characteristics",
+            value="2,800",
+            unit="lbs",
+            normalized_value="1,270 kg",
+            confidence=0.98,
+            source_page="3",
+            source_location="Dimensional Drawing"
+        ),
+        
+        # Safety
+        Datapoint(
+            id=131,
+            aligned_datapoint="Voltage/Frequency",
+            impact_category="Human Health",
+            impact_subcategory="Safety",
+            value="460V",
+            unit="60Hz",
+            confidence=0.99,
+            source_page="2",
+            source_location="Electrical Data"
+        ),
+        Datapoint(
+            id=130,
+            aligned_datapoint="Safety Certification",
+            impact_category="Human Health",
+            impact_subcategory="Safety",
+            value="UL, ETL, ASME",
+            confidence=0.97,
+            source_page="1",
+            source_location="Certifications"
+        ),
+    ]
+    
+    return AcerGraph(
+        document_name="Trane CVHE 450",
+        source_file="trane-cvhe-datasheet.pdf",
+        extracted_at=datetime.now(),
+        llm_model="claude-3-5-sonnet-20241022",
+        processing_time_seconds=4.2,
+        
+        has_metadata=Relationship(
+            name="hasMetadata",
+            found=True,
+            value={
+                "pageCount": 12,
+                "fileSize": "3.8MB",
+                "extractedAt": datetime.now().isoformat()
+            },
+            confidence=1.0,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_equipment=Relationship(
+            name="hasEquipment",
+            found=True,
+            value="Trane CVHE 450",
+            confidence=0.97,
+            status=RelationshipStatus.FOUND,
+            source_location="Page 1"
+        ),
+        
+        has_asset_type=Relationship(
+            name="hasAssetType",
+            found=True,
+            value="Centrifugal Water Chiller",
+            confidence=0.94,
+            status=RelationshipStatus.FOUND,
+            source_location="Page 1"
+        ),
+        
+        has_datapoint=Relationship(
+            name="hasDatapoint",
+            found=True,
+            value=datapoints,
+            confidence=0.91,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_impact_category=Relationship(
+            name="hasImpactCategory",
+            found=True,
+            value="Climate Health",
+            confidence=0.88,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_requirement_source=Relationship(
+            name="hasRequirementSource",
+            found=True,
+            value=["EU Tax", "ASHRAE 90.1", "LEED v4"],
+            confidence=0.85,
+            status=RelationshipStatus.FOUND
+        )
+    )
+
+
+def create_daikin_vrv_graph() -> AcerGraph:
+    """Create sample ACER graph for Daikin VRV IV commercial system."""
+    
+    datapoints = [
+        # Energy
+        Datapoint(
+            id=80,
+            aligned_datapoint="Primary Energy Demand (PED)",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="288,000",
+            unit="BTU/h",
+            normalized_value="84.4 kW",
+            confidence=0.90,
+            source_page="1",
+            source_location="Specifications"
+        ),
+        Datapoint(
+            id=152,
+            aligned_datapoint="COP",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="4.2",
+            confidence=0.94,
+            source_page="2",
+            source_location="Performance Data"
+        ),
+        Datapoint(
+            id=155,
+            aligned_datapoint="Airflow Rate",
+            impact_category="Climate Health",
+            impact_subcategory="Energy",
+            value="5,500",
+            unit="CFM",
+            normalized_value="2,600 L/s",
+            confidence=0.92,
+            source_page="2",
+            source_location="Specifications"
+        ),
+        
+        # Refrigerant
+        Datapoint(
+            id=92,
+            aligned_datapoint="Refrigerant Type",
+            impact_category="Climate Health",
+            impact_subcategory="Greenhouse Gas Emissions",
+            value="R-410A",
+            confidence=0.99,
+            source_page="1",
+            source_location="Refrigerant Data"
+        ),
+        Datapoint(
+            id=88,
+            aligned_datapoint="Global Warming Potential (GWP)",
+            impact_category="Climate Health",
+            impact_subcategory="Greenhouse Gas Emissions",
+            value="2,088",
+            unit="kg CO₂e",
+            confidence=0.95,
+            source_page="1",
+            source_location="Environmental Data"
+        ),
+        
+        # Physical
+        Datapoint(
+            id=160,
+            aligned_datapoint="Dimensions (L×W×H)",
+            impact_category="Asset Integrity",
+            impact_subcategory="Physical Characteristics",
+            value="52×36×68",
+            unit="in",
+            confidence=0.97,
+            source_page="3",
+            source_location="Dimensional Data"
+        ),
+        Datapoint(
+            id=163,
+            aligned_datapoint="Operating Weight",
+            impact_category="Asset Integrity",
+            impact_subcategory="Physical Characteristics",
+            value="450",
+            unit="lbs",
+            normalized_value="204 kg",
+            confidence=0.96,
+            source_page="3",
+            source_location="Dimensional Data"
+        ),
+        
+        # Safety
+        Datapoint(
+            id=131,
+            aligned_datapoint="Voltage/Frequency",
+            impact_category="Human Health",
+            impact_subcategory="Safety",
+            value="208-230V",
+            unit="60Hz",
+            confidence=0.99,
+            source_page="2",
+            source_location="Electrical Data"
+        ),
+        Datapoint(
+            id=54,
+            aligned_datapoint="Warranty Period",
+            impact_category="Asset Integrity",
+            impact_subcategory="Element Resilience",
+            value="7",
+            unit="years",
+            confidence=0.93,
+            source_page="4",
+            source_location="Warranty Terms"
+        ),
+    ]
+    
+    return AcerGraph(
+        document_name="Daikin VRV IV",
+        source_file="daikin-vrv-datasheet.pdf",
+        extracted_at=datetime.now(),
+        llm_model="claude-3-5-sonnet-20241022",
+        processing_time_seconds=3.5,
+        
+        has_metadata=Relationship(
+            name="hasMetadata",
+            found=True,
+            value={
+                "pageCount": 6,
+                "fileSize": "1.9MB",
+                "extractedAt": datetime.now().isoformat()
+            },
+            confidence=1.0,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_equipment=Relationship(
+            name="hasEquipment",
+            found=True,
+            value="Daikin VRV IV",
+            confidence=0.96,
+            status=RelationshipStatus.FOUND,
+            source_location="Page 1"
+        ),
+        
+        has_asset_type=Relationship(
+            name="hasAssetType",
+            found=True,
+            value="VRF/VRV System",
+            confidence=0.93,
+            status=RelationshipStatus.FOUND,
+            source_location="Page 1"
+        ),
+        
+        has_datapoint=Relationship(
+            name="hasDatapoint",
+            found=True,
+            value=datapoints,
+            confidence=0.88,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_impact_category=Relationship(
+            name="hasImpactCategory",
+            found=True,
+            value="Climate Health",
+            confidence=0.86,
+            status=RelationshipStatus.FOUND
+        ),
+        
+        has_requirement_source=Relationship(
+            name="hasRequirementSource",
+            found=False,
+            confidence=None,
+            status=RelationshipStatus.NOT_FOUND,
+            suggested=["ASHRAE 90.1", "LEED v4"]
+        )
+    )
