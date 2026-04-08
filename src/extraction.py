@@ -32,8 +32,10 @@ class EquipmentInfo:
 class Datapoint:
     """Extracted data point from document."""
     aligned_datapoint: str
+    impact_category: Optional[str] = None  # ACER impact category
+    impact_subcategory: Optional[str] = None
     value: str
-    unit: str
+    unit: str = ""
     normalized_value: Optional[str] = None
     confidence: float = 0.5
     source_page: Optional[str] = None
@@ -78,6 +80,8 @@ def extract_from_text(filename: str, text: str) -> dict:
         unit = match.group(2)
         datapoints.append(Datapoint(
             aligned_datapoint="Cooling Capacity",
+            impact_category="Energy Performance",
+            impact_subcategory="Capacity",
             value=value,
             unit=unit,
             normalized_value=None,
@@ -90,6 +94,8 @@ def extract_from_text(filename: str, text: str) -> dict:
     for match in re.finditer(r'(?:EER|IEER|SEER)[:\s]+(\d+(?:\.\d+)?)', text, re.I):
         datapoints.append(Datapoint(
             aligned_datapoint="Energy Efficiency Ratio",
+            impact_category="Energy Performance",
+            impact_subcategory="Efficiency Rating",
             value=match.group(1),
             unit="",
             confidence=0.95,
@@ -101,6 +107,8 @@ def extract_from_text(filename: str, text: str) -> dict:
     for match in re.finditer(r'(\d+(?:,\d{3})*)\s*(CFM|cfm|L/s|L/s)', text):
         datapoints.append(Datapoint(
             aligned_datapoint="Airflow Rate",
+            impact_category="Energy Performance",
+            impact_subcategory="Airflow",
             value=match.group(1),
             unit=match.group(2),
             confidence=0.88,
@@ -112,6 +120,8 @@ def extract_from_text(filename: str, text: str) -> dict:
     for match in re.finditer(r'(\d+(?:,\d{3})*)\s*(lbs?|kg)', text, re.I):
         datapoints.append(Datapoint(
             aligned_datapoint="Unit Weight",
+            impact_category="Material Efficiency",
+            impact_subcategory="Weight",
             value=match.group(1),
             unit=match.group(2),
             confidence=0.85,

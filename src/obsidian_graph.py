@@ -25,25 +25,30 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
     """
     
     def confidence_to_color(confidence: float) -> str:
-        """Convert confidence (0-1) to color: green -> yellow -> red"""
-        if confidence >= 1.0:
-            return "#22c55e"  # bright green
-        elif confidence <= 0.0:
+        """Convert confidence (0-1) to color: red -> yellow -> green"""
+        if confidence is None:
             return "#ef4444"  # bright red
         
-        # Linear interpolation: green (#22c55e) -> yellow (#eab308) -> red (#ef4444)
+        # Clamp to valid range
+        confidence = max(0.0, min(1.0, confidence))
+        
+        # Three-point gradient: Red (#ef4444) -> Yellow (#eab308) -> Green (#22c55e)
+        red = (239, 68, 68)
+        yellow = (234, 179, 8)
+        green = (34, 197, 94)
+        
         if confidence >= 0.5:
-            # Green to Yellow (1.0 -> 0.5)
+            # Yellow to Green (0.5 -> 1.0)
             t = (confidence - 0.5) / 0.5
-            r = int(34 + (234 - 34) * t)
-            g = int(197 + (179 - 197) * t)
-            b = int(94 + (8 - 94) * t)
+            r = int(yellow[0] + (green[0] - yellow[0]) * t)
+            g = int(yellow[1] + (green[1] - yellow[1]) * t)
+            b = int(yellow[2] + (green[2] - yellow[2]) * t)
         else:
-            # Yellow to Red (0.5 -> 0.0)
+            # Red to Yellow (0.0 -> 0.5)
             t = confidence / 0.5
-            r = int(239 + (234 - 239) * t)
-            g = int(68 + (179 - 68) * t)
-            b = int(68 + (8 - 68) * t)
+            r = int(red[0] + (yellow[0] - red[0]) * t)
+            g = int(red[1] + (yellow[1] - red[1]) * t)
+            b = int(red[2] + (yellow[2] - red[2]) * t)
         
         return f"#{r:02x}{g:02x}{b:02x}"
     

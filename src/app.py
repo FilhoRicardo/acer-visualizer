@@ -34,6 +34,127 @@ from openrouter_client import (
     set_openrouter_config,
 )
 
+# Model pricing lookup (input_cost, output_cost per M tokens) - shared across functions
+MODEL_PRICING = {
+    "anthropic/claude-3-haiku": (0.25, 1.25),
+    "anthropic/claude-3-sonnet": (3.00, 15.00),
+    "meta-llama/llama-3-8b-instruct": (0.0, 0.0),
+    "mistralai/mistral-7b-instruct": (0.0, 0.0),
+    "openai/gpt-4o-mini": (0.15, 0.60),
+    "google/gemini-pro-1.5": (1.25, 5.00),
+    "deepseek/deepseek-chat-v2": (0.28, 1.10),
+}
+
+
+def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
+    """
+    Build an AcerGraph from LLM extraction results.
+    
+    Args:
+        extraction: Dict with metadata, equipment, datapoints, requirements
+        filename: Document filename
+    
+    Returns:
+        AcerGraph with all extracted relationships
+    """
+    # Build metadata
+    metadata_rel = Relationship(
+        name="hasMetadata",
+        found=True,
+        value={
+            "filename": extraction.get('metadata', {}).filename if extraction.get('metadata') else filename,
+            "pages": extraction.get('metadata', {}).page_count if extraction.get('metadata') else 0,
+            "size": f"{extraction.get('metadata', {}).file_size_kb:.1f} KB" if extraction.get('metadata') else "Unknown",
+            "extractedAt": datetime.now().isoformat()
+        },
+        confidence=1.0,
+        status=RelationshipStatus.FOUND
+    )
+    
+    # Build equipment
+    equip = extraction.get('equipment')
+    equipment_rel = Relationship(
+        name="hasEquipment",
+        found=equip is not None,
+        value=equip.name if equip else None,
+        confidence=equip.confidence if equip else 0.0,
+        source_location="LLM Extraction",
+        status=RelationshipStatus.FOUND if equip else RelationshipStatus.NOT_FOUND
+    )
+    
+    # Build asset type (could infer from equipment name or use LLM extraction)
+    asset_type = extraction.get('asset_type')
+    asset_type_rel = Relationship(
+        name="hasAssetType",
+        found=asset_type is not None and bool(asset_type.type),
+        value=asset_type.type if asset_type else None,
+        confidence=asset_type.confidence if asset_type else 0.0,
+        status=RelationshipStatus.FOUND if asset_type and asset_type.type else RelationshipStatus.NOT_FOUND
+    )
+    
+    # Build datapoints
+    dps = extraction.get('datapoints', [])
+    datapoint_objects = []
+    for i, dp in enumerate(dps):
+        dp_obj = Datapoint(
+            id=i + 1,
+            aligned_datapoint=dp.aligned_datapoint,
+            impact_category=dp.impact_category,
+            impact_subcategory=dp.impact_subcategory or "General",
+            value=str(dp.value),
+            unit=dp.unit,
+            confidence=dp.confidence,
+            source_page=str(dp.source_page) if dp.source_page else "?"
+        )
+        datapoint_objects.append(dp_obj)
+    
+    has_datapoint_rel = Relationship(
+        name="hasDatapoint",
+        found=len(datapoint_objects) > 0,
+        value=datapoint_objects,
+        confidence=sum(d.confidence for d in datapoint_objects) / len(datapoint_objects) if datapoint_objects else 0.0,
+        status=RelationshipStatus.FOUND if datapoint_objects else RelationshipStatus.NOT_FOUND
+    )
+    
+    # Build impact category (from datapoints if available)
+    categories = set(dp.impact_category for dp in dps if dp.impact_category)
+    impact_cat_value = ", ".join(categories) if categories else None
+    impact_cat_rel = Relationship(
+        name="hasImpactCategory",
+        found=impact_cat_value is not None,
+        value=impact_cat_value,
+        confidence=0.8 if impact_cat_value else 0.0,
+        status=RelationshipStatus.FOUND if impact_cat_value else RelationshipStatus.NOT_FOUND
+    )
+    
+    # Build requirement sources
+    reqs = extraction.get('requirements', [])
+    req_values = [r.standard_name for r in reqs] if reqs else []
+    req_rel = Relationship(
+        name="hasRequirementSource",
+        found=len(req_values) > 0,
+        value=req_values,
+        confidence=0.85 if req_values else 0.0,
+        status=RelationshipStatus.FOUND if req_values else RelationshipStatus.NOT_FOUND
+    )
+    
+    # Build and return graph
+    graph = AcerGraph(
+        document_name=filename,
+        source_file=filename,
+        has_metadata=metadata_rel,
+        has_equipment=equipment_rel,
+        has_asset_type=asset_type_rel,
+        has_datapoint=has_datapoint_rel,
+        has_impact_category=impact_cat_rel,
+        has_requirement_source=req_rel,
+        extracted_at=datetime.now(),
+        llm_model="OpenRouter" if extraction.get('llm_extraction') else "Demo",
+        processing_time_seconds=0.0
+    )
+    
+    return graph
+
 
 # Page config
 st.set_page_config(
@@ -179,12 +300,12 @@ def main():
     st.markdown('<p class="main-header">🏢 ACER Visualizer</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">Building Passport Processor — Extract structured data from equipment documents</p>', unsafe_allow_html=True)
     
-    # Sidebar for navigation
+    # Sidebar for navigation (reordered per user request)
     with st.sidebar:
         st.header("Navigation")
         page = st.radio(
             "Go to",
-            ["🕸️ Graph View", "📊 Relationship Cards", "📄 Sample Documents", "📤 Upload PDF", "⚙️ Settings"],
+            ["⚙️ Settings", "📤 Upload PDF", "🕸️ Graph View", "📊 Relationship Cards", "📄 Sample Documents"],
             label_visibility="collapsed"
         )
         
@@ -203,24 +324,27 @@ def main():
         6. hasRequirementSource
         """)
     
-    if page == "🕸️ Graph View":
+    if page == "⚙️ Settings":
+        render_settings()
+    elif page == "📤 Upload PDF":
+        render_upload_pdf()
+    elif page == "🕸️ Graph View":
         render_graph_network_view()
     elif page == "📊 Relationship Cards":
         render_graph_view()
     elif page == "📄 Sample Documents":
         render_sample_documents()
-    elif page == "📤 Upload PDF":
-        render_upload_pdf()
-    else:
-        render_settings()
 
 
 def render_graph_view():
     """Main ACER Graph visualization view."""
     
-    # Check for uploaded graph or use sample
+    # Check for uploaded graph
     if 'current_graph' not in st.session_state:
         st.session_state.current_graph = None
+    
+    # Check if we have a last extraction to offer loading
+    has_last_extraction = 'last_extraction' in st.session_state and st.session_state.last_extraction is not None
     
     # Toolbar
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -229,13 +353,24 @@ def render_graph_view():
         st.subheader("ACER Graph")
         if st.session_state.current_graph:
             st.caption(f"Document: {st.session_state.current_graph.document_name}")
+        elif has_last_extraction:
+            st.caption(f"Last extraction: {st.session_state.last_extraction_filename}")
         else:
             st.caption("No document loaded — select a sample or upload")
     
     with col2:
-        if st.button("📊 Load Sample", use_container_width=True):
-            st.session_state.current_graph = create_carrier_rtu_graph()
-            st.rerun()
+        if has_last_extraction and not st.session_state.current_graph:
+            if st.button("📂 Load Last Extraction", use_container_width=True):
+                graph = build_graph_from_extraction(
+                    st.session_state.last_extraction,
+                    st.session_state.last_extraction_filename
+                )
+                st.session_state.current_graph = graph
+                st.rerun()
+        else:
+            if st.button("📊 Load Sample", use_container_width=True):
+                st.session_state.current_graph = create_carrier_rtu_graph()
+                st.rerun()
     
     with col3:
         if st.button("📄 Simple Demo", use_container_width=True):
@@ -462,6 +597,26 @@ def render_upload_pdf():
         
         st.divider()
         
+        # Cost preview
+        if openrouter_enabled and openrouter_api_key:
+            model = openrouter_model
+            input_cost, output_cost = MODEL_PRICING.get(model, (0.25, 1.25))
+            pages_est = max(1, page_count if page_count else 5)
+            tokens_in = pages_est * 2000
+            tokens_out = min(tokens_in // 2, 1500)
+            cost_est = (tokens_in / 1e6) * input_cost + (tokens_out / 1e6) * output_cost
+            
+            cost_col1, cost_col2, cost_col3 = st.columns(3)
+            with cost_col1:
+                st.metric("Pages", pages_est)
+            with cost_col2:
+                st.metric("Tokens (in)", f"{tokens_in:,}")
+            with cost_col3:
+                if cost_est == 0:
+                    st.metric("Est. Cost", "FREE ✓")
+                else:
+                    st.metric("Est. Cost", f"${cost_est:.4f}")
+        
         # Extraction button
         if st.button("🔍 Extract ACER Relationships", type="primary", use_container_width=True):
             with st.spinner("Extracting data from document..."):
@@ -506,6 +661,10 @@ def render_upload_pdf():
                                 'manufacturer': llm_result.get('hasEquipment', {}).get('manufacturer', 'Unknown'),
                                 'confidence': llm_result.get('hasEquipment', {}).get('confidence', 0.5)
                             })() if llm_result.get('hasEquipment') else None,
+                            'asset_type': type('obj', (object,), {
+                                'type': llm_result.get('hasAssetType', {}).get('type', ''),
+                                'confidence': llm_result.get('hasAssetType', {}).get('confidence', 0.5)
+                            })() if llm_result.get('hasAssetType') else None,
                             'datapoints': [
                                 type('obj', (object,), {
                                     'aligned_datapoint': dp.get('aligned_datapoint', 'Unknown'),
@@ -613,18 +772,28 @@ def render_upload_pdf():
                     
                     st.divider()
                     
+                    # Store extraction in session state for persistence
+                    st.session_state.last_extraction = extraction
+                    st.session_state.last_extraction_filename = uploaded_file.name
+                    
                     # Action buttons
-                    col_load, col_discard = st.columns(2)
+                    col_load, col_view = st.columns(2)
                     
                     with col_load:
                         if st.button("📊 Load as ACER Graph", type="primary", use_container_width=True):
-                            st.session_state.current_graph = create_carrier_rtu_graph()
-                            st.success("Loaded sample ACER graph")
+                            # Build actual graph from extraction
+                            graph = build_graph_from_extraction(extraction, uploaded_file.name)
+                            st.session_state.current_graph = graph
+                            st.success("Graph loaded from extraction!")
                             st.rerun()
                     
-                    with col_discard:
-                        if st.button("🗑️ Discard", use_container_width=True):
-                            st.info("Upload a new file to start over")
+                    with col_view:
+                        if st.button("🔍 View Full Results", use_container_width=True):
+                            # Build and auto-navigate to graph
+                            graph = build_graph_from_extraction(extraction, uploaded_file.name)
+                            st.session_state.current_graph = graph
+                            st.session_state._nav_to = "🕸️ Graph View"
+                            st.rerun()
                 
                 except Exception as e:
                     st.error(f"Error processing PDF: {str(e)}")
@@ -681,32 +850,57 @@ def render_sample_documents():
 def render_graph_network_view():
     """Interactive Obsidian-style graph visualization."""
     
-    # Check for uploaded graph or use sample
+    # Check for uploaded graph
     if 'current_graph' not in st.session_state:
         st.session_state.current_graph = None
     
+    # Check if we have a last extraction to offer loading
+    has_last_extraction = 'last_extraction' in st.session_state and st.session_state.last_extraction is not None
+    
     # Toolbar
-    col1, col2 = st.columns([3, 1])
+    col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:
         st.subheader("ACER Graph Network")
         if st.session_state.current_graph:
             st.caption(f"Document: {st.session_state.current_graph.document_name}")
+        elif has_last_extraction:
+            st.caption(f"Last extraction: {st.session_state.last_extraction_filename}")
         else:
-            st.caption("Loading sample data...")
-            st.session_state.current_graph = create_carrier_rtu_graph()
+            st.caption("No document loaded")
     
     with col2:
-        if st.button("Refresh", use_container_width=True):
+        if has_last_extraction and not st.session_state.current_graph:
+            if st.button("📂 Load Last Extraction", use_container_width=True):
+                graph = build_graph_from_extraction(
+                    st.session_state.last_extraction,
+                    st.session_state.last_extraction_filename
+                )
+                st.session_state.current_graph = graph
+                st.rerun()
+    
+    with col3:
+        if st.button("🗑️ Clear", use_container_width=True):
+            st.session_state.current_graph = None
+            if has_last_extraction:
+                st.info("Graph cleared. You can reload the last extraction above.")
+            else:
+                st.info("Graph cleared.")
             st.rerun()
     
     st.divider()
     
+    # If no graph, use sample
+    if not st.session_state.current_graph:
+        if st.button("📊 Load Sample", type="primary"):
+            st.session_state.current_graph = create_carrier_rtu_graph()
+            st.rerun()
+            return
+        st.info("Upload a PDF and click 'Load as ACER Graph' to see results here.")
+        return
+    
     # Get graph
     graph = st.session_state.current_graph
-    if not graph:
-        st.info("No graph loaded. Select a sample document or upload a PDF.")
-        return
     
     # Create and render the Obsidian-style graph
     with st.spinner("Generating graph visualization..."):
@@ -809,20 +1003,40 @@ def render_settings():
     # Save model selection
     st.session_state['openrouter_model'] = selected_model
     
-    # Cost estimates
-    st.markdown("""
-    ### Cost Estimates
+    # Dynamic cost estimator
+    st.markdown("### Cost Estimator")
     
-    | Model | Input | Output | Notes |
-    |-------|-------|--------|-------|
-    | Claude 3 Haiku | $0.25/M | $1.25/M | Fast, good quality |
-    | Llama 3 8B | Free | Free | Open source |
-    | Mistral 7B | Free | Free | Open source |
-    | GPT-4o Mini | $0.15/M | $0.60/M | Cheap, capable |
-    | DeepSeek V2 | $0.28/M | $1.10/M | Good value |
+    # Get pricing for selected model (defaults to Claude Haiku)
+    input_cost, output_cost = MODEL_PRICING.get(selected_model, (0.25, 1.25))
     
-    *Prices are approximate from OpenRouter*
-    """)
+    # Estimate tokens based on pages (rough: ~2000 tokens per page)
+    estimated_pages = st.slider("Estimated pages in PDF", 1, 50, 5, help="Slide to match your document")
+    tokens_per_page = 2000
+    input_tokens = estimated_pages * tokens_per_page
+    output_tokens = min(input_tokens // 2, 1500)  # Output is typically smaller
+    
+    # Calculate costs
+    input_cost_actual = (input_tokens / 1_000_000) * input_cost
+    output_cost_actual = (output_tokens / 1_000_000) * output_cost
+    total_cost = input_cost_actual + output_cost_actual
+    
+    # Display with color coding
+    cost_col1, cost_col2, cost_col3 = st.columns(3)
+    
+    with cost_col1:
+        st.metric("Input Tokens", f"{input_tokens:,}")
+    with cost_col2:
+        st.metric("Output Tokens", f"{output_tokens:,}")
+    with cost_col3:
+        if total_cost == 0:
+            st.metric("Est. Cost", "FREE ✓", delta="Open source model")
+        else:
+            st.metric("Est. Cost", f"${total_cost:.4f}", delta=f"${input_cost_actual:.4f} in + ${output_cost_actual:.4f} out")
+    
+    if total_cost > 0:
+        st.caption(f"Prices: ${input_cost:.2f}/M tokens in, ${output_cost:.2f}/M tokens out")
+    else:
+        st.caption("This model is free on OpenRouter (open source)")
     
     st.divider()
     
