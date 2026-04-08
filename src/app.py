@@ -40,7 +40,7 @@ st.set_page_config(
     page_title="ACER Visualizer",
     page_icon="🏢",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # Custom CSS
@@ -339,43 +339,42 @@ def render_graph_view():
         else:
             st.info("No datapoints extracted")
     
-    # Missing relationships
-    st.divider()
-    st.markdown("#### ✗ Missing Relationships")
+    # Missing relationships - only show if actually missing
+    missing_rels = []
     
-    col_m1, col_m2 = st.columns(2)
+    if graph.has_impact_category and not graph.has_impact_category.found:
+        missing_rels.append(("hasImpactCategory", graph.has_impact_category))
     
-    with col_m1:
-        rel = graph.has_impact_category
-        with st.container():
-            st.markdown(f"""
-            <div class="relationship-card relationship-missing">
-                <h3>✗ hasImpactCategory</h3>
-                <p style="opacity: 0.9; margin: 0;">Sustainability dimension</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if rel and rel.suggested:
-                st.caption(f"💡 Suggested: {rel.suggested}")
-            
-            if st.button("Add Impact Category", key="add_impact"):
-                st.info("Impact category selection modal would open here")
+    if graph.has_requirement_source and not graph.has_requirement_source.found:
+        missing_rels.append(("hasRequirementSource", graph.has_requirement_source))
     
-    with col_m2:
-        rel = graph.has_requirement_source
-        with st.container():
-            st.markdown(f"""
-            <div class="relationship-card relationship-missing">
-                <h3>✗ hasRequirementSource</h3>
-                <p style="opacity: 0.9; margin: 0;">Compliance standards</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            if rel and rel.suggested:
-                st.caption(f"💡 Suggested: {', '.join(rel.suggested) if isinstance(rel.suggested, list) else rel.suggested}")
-            
-            if st.button("Add Requirement Source", key="add_req"):
-                st.info("Requirement source selection modal would open here")
+    if missing_rels:
+        st.divider()
+        st.markdown("#### ✗ Missing Relationships")
+        
+        cols = st.columns(len(missing_rels)) if len(missing_rels) < 3 else st.columns(2)
+        
+        for i, (name, rel) in enumerate(missing_rels):
+            with cols[i]:
+                with st.container():
+                    if name == "hasImpactCategory":
+                        desc = "Sustainability dimension"
+                    else:
+                        desc = "Compliance standards"
+                    
+                    st.markdown(f"""
+                    <div class="relationship-card relationship-missing">
+                        <h3>✗ {name}</h3>
+                        <p style="opacity: 0.9; margin: 0;">{desc}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                    if rel and rel.suggested:
+                        suggestion = rel.suggested if isinstance(rel.suggested, str) else ', '.join(rel.suggested)
+                        st.caption(f"💡 Suggested: {suggestion}")
+                    
+                    if st.button(f"Add {name}", key=f"add_{name}"):
+                        st.info(f"{name} selection modal would open here")
     
     # Export section
     st.divider()

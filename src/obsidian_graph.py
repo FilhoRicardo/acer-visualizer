@@ -34,7 +34,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
         "label": graph.document_name.split('.')[0] if '.' in graph.document_name else graph.document_name,
         "type": "document",
         "found": True,
-        "size": 40
+        "size": 25
     })
     
     # Relationship colors
@@ -64,7 +64,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
             "found": rel.found,
             "color": rel_colors.get(display_name, "#888888"),
             "displayName": display_name,
-            "size": 28 if rel.found else 22
+            "size": 18 if rel.found else 14
         })
         
         links.append({
@@ -100,7 +100,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
                     "type": "datapoint",
                     "found": True,
                     "color": conf_color,
-                    "size": 16,
+                    "size": 10,
                     "tooltip": tooltip
                 })
                 
@@ -128,7 +128,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
     .node.relationship circle { fill-opacity: 0.9; }
     .node.relationship.not-found circle { fill: #444; stroke: #555; stroke-dasharray: 4,2; }
     .node.datapoint circle { fill-opacity: 0.85; }
-    .node text { fill: #ccc; font-size: 11px; font-family: inherit; text-anchor: middle; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+    .node text { fill: #ccc; font-size: 9px; font-family: inherit; text-anchor: middle; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
     .link { stroke: #444; stroke-opacity: 0.6; stroke-width: 1.5px; }
     .link.not-found { stroke: #2a2a2a; stroke-opacity: 0.3; stroke-dasharray: 3,3; }
     #tooltip { position: absolute; background: #252525; border: 1px solid #444; border-radius: 8px; padding: 12px; font-size: 12px; color: #e0e0e0; pointer-events: none; opacity: 0; transition: opacity 0.2s; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 1000; }
