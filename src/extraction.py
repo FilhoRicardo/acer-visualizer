@@ -32,12 +32,12 @@ class EquipmentInfo:
 class Datapoint:
     """Extracted data point from document."""
     aligned_datapoint: str
-    impact_category: Optional[str] = None  # ACER impact category
-    impact_subcategory: Optional[str] = None
     value: str
     unit: str = ""
     normalized_value: Optional[str] = None
     confidence: float = 0.5
+    impact_category: Optional[str] = None  # ACER impact category
+    impact_subcategory: Optional[str] = None
     source_page: Optional[str] = None
     source_location: Optional[str] = None
 
