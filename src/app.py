@@ -24,6 +24,15 @@ from models import (
 )
 from extraction import extract_from_text
 from obsidian_graph import create_obsidian_graph_html, render_obsidian_graph, render_extraction_vs_alignment_info
+from openrouter_client import (
+    fetch_available_models,
+    extract_with_openrouter,
+    validate_api_key,
+    get_display_name,
+    RECOMMENDED_MODELS,
+    get_openrouter_config,
+    set_openrouter_config,
+)
 
 
 # Page config
@@ -404,12 +413,30 @@ def render_upload_pdf():
     """PDF Upload and extraction view."""
     st.subheader("Upload PDF Document")
     
-    st.markdown("""
-    Upload a building equipment specification PDF to extract ACER relationships.
+    # Check OpenRouter configuration
+    openrouter_enabled = st.session_state.get('openrouter_enabled', False)
+    openrouter_api_key = st.session_state.get('openrouter_api_key', '')
+    openrouter_model = st.session_state.get('openrouter_model', RECOMMENDED_MODELS[0])
     
-    **Note:** This is a demo with mock extraction. In production, this would use
-    Azure Document Intelligence or a custom LLM pipeline for real extraction.
-    """)
+    if openrouter_enabled:
+        st.info("""
+        **OpenRouter LLM Extraction Enabled**
+        - Model: {} 
+        - Configure in Settings to change model or disable
+        
+        Upload a PDF to extract ACER relationships using the configured LLM.
+        """.format(get_display_name(openrouter_model)))
+    else:
+        st.markdown("""
+        Upload a building equipment specification PDF to extract ACER relationships.
+        
+        **To enable real LLM extraction:**
+        1. Go to **⚙️ Settings**
+        2. Enter your OpenRouter API key
+        3. Select a model and enable LLM extraction
+        
+        Currently running in demo mode with mock data.
+        """)
     
     # File uploader
     uploaded_file = st.file_uploader(
@@ -439,41 +466,98 @@ def render_upload_pdf():
         # Extraction button
         if st.button("🔍 Extract ACER Relationships", type="primary", use_container_width=True):
             with st.spinner("Extracting data from document..."):
-                # For demo, we use mock text extraction
-                # In production: use PyPDF2, pdfplumber, or Azure Document Intelligence
-                
-                # Simulate reading the PDF (mock for demo)
                 try:
+                    # Read PDF text using pdfplumber
+                    import pdfplumber
                     import io
-                    # Try to read as text (simplified for demo)
-                    # Real implementation would parse PDF properly
-                    sample_text = f"""
-                    CARRIER 40RUS 060-8 ROOFTOP UNIT
                     
-                    SPECIFICATIONS:
-                    Cooling Capacity: 50 tons
-                    EER: 11.5
-                    IEER: 13.0
-                    Airflow: 2,000 CFM
-                    Unit Weight: 850 lbs
+                    pdf_bytes = uploaded_file.getvalue()
+                    document_text = ""
+                    page_count = 0
                     
-                    COMPLIANCE:
-                    Meets ASHRAE 90.1-2019 standards
-                    Energy Star certified
-                    LEED compliant
+                    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
+                        page_count = len(pdf.pages)
+                        for page in pdf.pages:
+                            text = page.extract_text()
+                            if text:
+                                document_text += text + "\n\n"
                     
-                    MANUFACTURER: Carrier Corporation
-                    MODEL: 40RUS 060-8
-                    """
-                    
-                    # Extract using mock extractor
-                    extraction = extract_from_text(uploaded_file.name, sample_text)
+                    # Check if OpenRouter is configured
+                    if openrouter_enabled and openrouter_api_key:
+                        # Use OpenRouter for extraction
+                        st.info(f"Using {get_display_name(openrouter_model)} for extraction...")
+                        
+                        llm_result = extract_with_openrouter(
+                            api_key=openrouter_api_key,
+                            model_id=openrouter_model,
+                            document_text=document_text[:15000],  # Limit text length
+                            filename=uploaded_file.name
+                        )
+                        
+                        # Convert LLM result to extraction format
+                        extraction = {
+                            'metadata': type('obj', (object,), {
+                                'filename': uploaded_file.name,
+                                'file_size_kb': size_kb,
+                                'page_count': page_count,
+                                'extracted_at': datetime.now().isoformat()
+                            })(),
+                            'equipment': type('obj', (object,), {
+                                'name': llm_result.get('hasEquipment', {}).get('name', 'Unknown'),
+                                'manufacturer': llm_result.get('hasEquipment', {}).get('manufacturer', 'Unknown'),
+                                'confidence': llm_result.get('hasEquipment', {}).get('confidence', 0.5)
+                            })() if llm_result.get('hasEquipment') else None,
+                            'datapoints': [
+                                type('obj', (object,), {
+                                    'aligned_datapoint': dp.get('aligned_datapoint', 'Unknown'),
+                                    'value': dp.get('value', ''),
+                                    'unit': dp.get('unit', ''),
+                                    'confidence': dp.get('confidence', 0.5),
+                                    'source_page': dp.get('source_page', '?'),
+                                    'impact_category': dp.get('impact_category', ''),
+                                    'impact_subcategory': dp.get('impact_subcategory', '')
+                                })
+                                for dp in llm_result.get('hasDatapoint', [])
+                            ],
+                            'requirements': [
+                                type('obj', (object,), {
+                                    'standard_name': std,
+                                    'requirement_text': f"Found in document (LLM extraction)"
+                                })
+                                for std in llm_result.get('hasRequirementSource', {}).get('standards', [])
+                            ],
+                            'llm_extraction': True
+                        }
+                        
+                    else:
+                        # Fall back to mock extraction
+                        sample_text = f"""
+                        CARRIER 40RUS 060-8 ROOFTOP UNIT
+                        
+                        SPECIFICATIONS:
+                        Cooling Capacity: 50 tons
+                        EER: 11.5
+                        IEER: 13.0
+                        Airflow: 2,000 CFM
+                        Unit Weight: 850 lbs
+                        
+                        COMPLIANCE:
+                        Meets ASHRAE 90.1-2019 standards
+                        Energy Star certified
+                        LEED compliant
+                        
+                        MANUFACTURER: Carrier Corporation
+                        MODEL: 40RUS 060-8
+                        """
+                        extraction = extract_from_text(uploaded_file.name, sample_text)
+                        extraction['llm_extraction'] = False
                     
                     # Build a simple ACER graph from extraction
                     from models import create_carrier_rtu_graph
                     
                     # Show extraction results
-                    st.success("Extraction complete!")
+                    extraction_type = "LLM" if extraction.get('llm_extraction') else "Demo"
+                    st.success(f"Extraction complete! ({extraction_type} mode)")
                     
                     st.markdown("### Extracted Data")
                     
@@ -494,10 +578,12 @@ def render_upload_pdf():
                     # Equipment
                     if extraction['equipment']:
                         equip = extraction['equipment']
+                        conf_emoji = "✓" if equip.confidence >= 0.85 else "⚠️" if equip.confidence >= 0.6 else "✗"
                         st.markdown(f"""
-                        #### Equipment Detected
+                        #### Equipment Detected {conf_emoji}
                         - **Name:** {equip.name}
                         - **Manufacturer:** {equip.manufacturer}
+                        - **Confidence:** {equip.confidence:.0%}
                         """)
                     
                     # Datapoints found
@@ -508,11 +594,12 @@ def render_upload_pdf():
                         
                         dp_data = []
                         for dp in extraction['datapoints']:
+                            conf_class = "✓" if dp.confidence >= 0.85 else "⚠️" if dp.confidence >= 0.6 else "✗"
                             dp_data.append({
-                                "Datapoint": dp.aligned_datapoint,
+                                "Category": dp.impact_category[:20] + "..." if len(dp.impact_category) > 20 else dp.impact_category,
+                                "Datapoint": dp.aligned_datapoint[:30] + "..." if len(dp.aligned_datapoint) > 30 else dp.aligned_datapoint,
                                 "Value": f"{dp.value} {dp.unit}",
-                                "Confidence": f"{dp.confidence:.0%}",
-                                "Source": f"p{dp.source_page}"
+                                "Conf": conf_class
                             })
                         
                         st.dataframe(dp_data, use_container_width=True)
@@ -533,7 +620,7 @@ def render_upload_pdf():
                     with col_load:
                         if st.button("📊 Load as ACER Graph", type="primary", use_container_width=True):
                             st.session_state.current_graph = create_carrier_rtu_graph()
-                            st.success("Loaded sample ACER graph (demo mode)")
+                            st.success("Loaded sample ACER graph")
                             st.rerun()
                     
                     with col_discard:
@@ -636,34 +723,148 @@ def render_graph_network_view():
 
 
 def render_settings():
-    """Settings page."""
+    """Settings page with OpenRouter configuration."""
     st.subheader("Settings")
     
+    # Initialize session state defaults
+    if 'openrouter_api_key' not in st.session_state:
+        st.session_state['openrouter_api_key'] = ""
+    if 'openrouter_model' not in st.session_state:
+        st.session_state['openrouter_model'] = RECOMMENDED_MODELS[0]
+    if 'openrouter_enabled' not in st.session_state:
+        st.session_state['openrouter_enabled'] = False
+    
+    # OpenRouter Configuration Section
     st.markdown("""
-    ### Configuration
+    ## OpenRouter Configuration
     
-    **PDF Processing**
-    - Max file size: 50MB
-    - Supported formats: PDF
-    
-    **LLM Configuration**
-    - Provider: Anthropic
-    - Model: claude-3-5-sonnet-20241022
-    
-    **Confidence Thresholds**
-    - High: ≥ 85%
-    - Medium: 60-84%
-    - Low: < 60%
-    
-    **Ontology**
-    - Version: 0.0.1
-    - Datapoints: 80+
+    Use your own OpenRouter API key to enable real LLM-powered PDF extraction.
+    This allows anyone to test the app without needing access to our systems.
     """)
     
-    # API Key input (for future use)
-    with st.expander("API Configuration"):
-        api_key = st.text_input("Anthropic API Key", type="password", help="Required for real PDF extraction")
-        st.caption("Get your API key at console.anthropic.com")
+    # API Key input
+    col1, col2 = st.columns([3, 1])
+    
+    with col1:
+        api_key = st.text_input(
+            "OpenRouter API Key",
+            value=st.session_state.get('openrouter_api_key', ''),
+            type="password",
+            help="Get your API key at openrouter.ai/keys"
+        )
+    
+    with col2:
+        st.write("")  # Spacing
+        if st.button("🔑 Validate Key", use_container_width=True):
+            if api_key and validate_api_key(api_key):
+                st.session_state['openrouter_api_key'] = api_key
+                st.session_state['openrouter_enabled'] = True
+                st.success("API key validated!")
+            else:
+                st.error("Invalid API key")
+    
+    st.caption("Don't have a key? Get one at [openrouter.ai](https://openrouter.ai/keys)")
+    
+    st.divider()
+    
+    # Model selection
+    st.markdown("### Model Selection")
+    
+    model_options = []
+    selected_model = st.session_state.get('openrouter_model', RECOMMENDED_MODELS[0])
+    
+    # Use recommended models if API key is set
+    if api_key and validate_api_key(api_key):
+        with st.spinner("Fetching available models..."):
+            available_models = fetch_available_models(api_key)
+            
+        if available_models:
+            model_options = [m['id'] for m in available_models]
+            selected_model = st.selectbox(
+                "Choose a model",
+                options=model_options,
+                index=model_options.index(selected_model) if selected_model in model_options else 0,
+                format_func=get_display_name,
+                help="Select the LLM model for PDF extraction"
+            )
+        else:
+            st.warning("Could not fetch models. Using recommended models.")
+            model_options = RECOMMENDED_MODELS
+            selected_model = st.selectbox(
+                "Choose a model",
+                options=model_options,
+                index=model_options.index(selected_model) if selected_model in model_options else 0,
+                format_func=get_display_name,
+                help="Select the LLM model for PDF extraction"
+            )
+    else:
+        model_options = RECOMMENDED_MODELS
+        selected_model = st.selectbox(
+            "Choose a model",
+            options=model_options,
+            index=model_options.index(selected_model) if selected_model in model_options else 0,
+            format_func=get_display_name,
+            help="Enter and validate an API key to use custom models"
+        )
+    
+    # Save model selection
+    st.session_state['openrouter_model'] = selected_model
+    
+    # Cost estimates
+    st.markdown("""
+    ### Cost Estimates
+    
+    | Model | Input | Output | Notes |
+    |-------|-------|--------|-------|
+    | Claude 3 Haiku | $0.25/M | $1.25/M | Fast, good quality |
+    | Llama 3 8B | Free | Free | Open source |
+    | Mistral 7B | Free | Free | Open source |
+    | GPT-4o Mini | $0.15/M | $0.60/M | Cheap, capable |
+    | DeepSeek V2 | $0.28/M | $1.10/M | Good value |
+    
+    *Prices are approximate from OpenRouter*
+    """)
+    
+    st.divider()
+    
+    # Enable/disable toggle
+    enable_llm = st.toggle(
+        "Enable LLM Extraction",
+        value=st.session_state.get('openrouter_enabled', False),
+        help="When enabled, PDFs will be extracted using the configured LLM"
+    )
+    st.session_state['openrouter_enabled'] = enable_llm and bool(api_key)
+    
+    if enable_llm and not api_key:
+        st.warning("Enter and validate an API key to enable LLM extraction")
+    
+    # Current status
+    status_col1, status_col2 = st.columns(2)
+    
+    with status_col1:
+        st.metric("LLM Extraction", "Enabled" if st.session_state['openrouter_enabled'] else "Disabled")
+    
+    with status_col2:
+        st.metric("Model", get_display_name(selected_model).split(" (")[0])
+    
+    st.divider()
+    
+    # Other settings
+    with st.expander("Other Settings"):
+        st.markdown("""
+        ### PDF Processing
+        - Max file size: 50MB
+        - Supported formats: PDF
+        
+        ### Confidence Thresholds
+        - High: ≥ 85%
+        - Medium: 60-84%
+        - Low: < 60%
+        
+        ### Ontology
+        - Version: 0.0.1
+        - Datapoints: 80+
+        """)
 
 
 if __name__ == "__main__":

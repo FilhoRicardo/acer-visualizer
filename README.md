@@ -66,17 +66,36 @@ ACER-Visualizer/
 - [x] JSON export
 - [x] Markdown export (Obsidian-ready)
 - [x] Sample data
-- [ ] PDF upload + extraction
-- [ ] LLM integration
+- [x] PDF upload + extraction
+- [x] OpenRouter LLM integration (bring your own API key)
 - [ ] Batch processing
+
+## OpenRouter Integration
+
+The app supports **bring-your-own-key** LLM extraction via OpenRouter:
+
+1. Go to **⚙️ Settings**
+2. Enter your OpenRouter API key
+3. Select a model (Claude, Llama, Mistral, GPT-4o Mini, etc.)
+4. Enable LLM extraction
+
+This allows anyone to test the app without needing access to our systems. Costs are paid by the user through their OpenRouter account.
+
+**Recommended Models:**
+| Model | Cost | Notes |
+|-------|------|-------|
+| Claude 3 Haiku | Cheap | Fast, good quality |
+| Llama 3 8B | Free | Open source |
+| Mistral 7B | Free | Open source |
+| GPT-4o Mini | Cheap | Capable |
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|------------|
 | Frontend | Streamlit |
-| PDF Extraction | pdfplumber, PyMuPDF |
-| AI Extraction | Anthropic Claude API |
+| PDF Extraction | pdfplumber |
+| AI Extraction | OpenRouter API (user-provided) |
 | Visualization | Plotly |
 | Data Validation | Pydantic |
 
