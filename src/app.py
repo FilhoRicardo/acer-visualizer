@@ -722,13 +722,15 @@ def render_upload_pdf():
                         llm_result = extract_with_openrouter(
                             api_key=openrouter_api_key,
                             model_id=openrouter_model,
-                            document_text=document_text[:15000],  # Limit text length
+                            document_text=document_text[:15000] if document_text else "",  # Limit text length
                             filename=uploaded_file.name
                         )
                         
-                        # Use LLM result directly (raw dict)
-                        extraction = llm_result
-                        
+                        # Use LLM result directly (raw dict), guard against None
+                        extraction = llm_result if isinstance(llm_result, dict) else {}
+                        if not extraction:
+                            st.error("LLM returned no data. Please try again or use demo mode.")
+                            st.stop()
                     else:
                         # Fall back to mock extraction
                         sample_text = f"""
@@ -755,6 +757,10 @@ def render_upload_pdf():
                     # Build a simple ACER graph from extraction
                     from models import create_carrier_rtu_graph
                     
+                    # Ensure extraction is a valid dict before displaying
+                    if not isinstance(extraction, dict):
+                        extraction = {}
+                    
                     # Show extraction results
                     extraction_type = "LLM" if extraction.get('llm_extraction') else "Demo"
                     st.success(f"Extraction complete! ({extraction_type} mode)")
@@ -762,11 +768,17 @@ def render_upload_pdf():
                     st.markdown("### Extracted Data")
                     
                     # Metadata (handle both demo dataclass and LLM dict formats)
-                    meta = extraction.get('metadata') or extraction.get('hasMetadata', {})
-                    meta_filename = getattr(meta, 'filename', '') or meta.get('filename', uploaded_file.name) if isinstance(meta, dict) else uploaded_file.name
-                    meta_pages = getattr(meta, 'page_count', None) or meta.get('pageCount', meta.get('page_count', '?')) if isinstance(meta, dict) else '?'
-                    meta_size = f"{getattr(meta, 'file_size_kb', 0):.1f} KB" if hasattr(meta, 'file_size_kb') else (f"{meta.get('file_size_kb', 0):.1f} KB" if isinstance(meta, dict) and meta.get('file_size_kb') else 'N/A')
-                    meta_time = getattr(meta, 'extracted_at', '') or meta.get('extractedAt', datetime.now().isoformat()) if isinstance(meta, dict) else datetime.now().isoformat()
+                    meta = extraction.get('metadata') or extraction.get('hasMetadata', {}) or {}
+                    meta_filename = uploaded_file.name
+                    meta_pages = "?"
+                    
+                    if isinstance(meta, dict):
+                        meta_filename = meta.get('filename', uploaded_file.name) or uploaded_file.name
+                        pages_val = meta.get('pageCount') or meta.get('page_count')
+                        meta_pages = str(pages_val) if pages_val is not None else "?"
+                    elif hasattr(meta, 'filename'):
+                        meta_filename = meta.filename or uploaded_file.name
+                        meta_pages = str(meta.page_count) if meta.page_count else "?"
                     
                     if meta:
                         st.markdown("""
@@ -774,15 +786,25 @@ def render_upload_pdf():
                         """)
                         st.table({
                             "Property": ["Filename", "Pages"],
-                            "Value": [meta_filename, str(meta_pages)]
+                            "Value": [meta_filename, meta_pages]
                         })
                     
                     # Equipment detected
                     equip_data = extraction.get('hasEquipment', {}) or {}
-                    equip_name = equip_data.get('name', 'Unknown')
-                    equip_conf = equip_data.get('confidence', 0.5)
-                    equip_manuf = equip_data.get('manufacturer', 'Unknown')
-                    if equip_name and equip_name != 'Unknown':
+                    equip_name = ""
+                    equip_conf = 0.5
+                    equip_manuf = "Unknown"
+                    
+                    if isinstance(equip_data, dict):
+                        equip_name = equip_data.get('name', '') or ''
+                        equip_conf = equip_data.get('confidence', 0.5) or 0.5
+                        equip_manuf = equip_data.get('manufacturer', 'Unknown') or 'Unknown'
+                    elif hasattr(equip_data, 'name'):
+                        equip_name = getattr(equip_data, 'name', '') or ''
+                        equip_conf = getattr(equip_data, 'confidence', 0.5) or 0.5
+                        equip_manuf = getattr(equip_data, 'manufacturer', 'Unknown') or 'Unknown'
+                    
+                    if equip_name:
                         conf_emoji = "✅" if equip_conf >= 0.85 else "⚠️"
                         st.markdown(f"""
                         #### Equipment Detected {conf_emoji}
@@ -793,24 +815,33 @@ def render_upload_pdf():
                     
                     # Datapoints found
                     dp_list = extraction.get('hasDatapoint', []) or []
-                    if dp_list:
+                    if dp_list and isinstance(dp_list, list):
                         st.markdown(f"""
                         #### Data Points Found ({len(dp_list)})
                         """)
                         
                         dp_data = []
                         for dp in dp_list:
-                            if not isinstance(dp, dict):
+                            if isinstance(dp, dict):
+                                conf = dp.get('confidence', 0.5) or 0.5
+                                conf_class = "✓" if conf >= 0.85 else "⚠️" if conf >= 0.6 else "✗"
+                                cat = dp.get('impact_category', '') or ''
+                                dp_name = dp.get('aligned_datapoint', 'Unknown') or 'Unknown'
+                                val = dp.get('value', '') or ''
+                                unit = dp.get('unit', '') or ''
+                            elif hasattr(dp, 'aligned_datapoint'):
+                                conf = getattr(dp, 'confidence', 0.5) or 0.5
+                                conf_class = "✓" if conf >= 0.85 else "⚠️" if conf >= 0.6 else "✗"
+                                cat = getattr(dp, 'impact_category', '') or ''
+                                dp_name = getattr(dp, 'aligned_datapoint', 'Unknown') or 'Unknown'
+                                val = getattr(dp, 'value', '') or ''
+                                unit = getattr(dp, 'unit', '') or ''
+                            else:
                                 continue
-                            conf = dp.get('confidence', 0.5)
-                            conf_class = "✓" if conf >= 0.85 else "⚠️" if conf >= 0.6 else "✗"
-                            cat = dp.get('impact_category', '') or ''
-                            dp_name = dp.get('aligned_datapoint', 'Unknown') or 'Unknown'
-                            val = dp.get('value', '')
-                            unit = dp.get('unit', '')
+                            
                             dp_data.append({
-                                "Category": cat[:20] + "..." if len(cat) > 20 else cat,
-                                "Datapoint": dp_name[:30] + "..." if len(dp_name) > 30 else dp_name,
+                                "Category": (cat[:20] + "..." if len(cat) > 20 else cat),
+                                "Datapoint": (dp_name[:30] + "..." if len(dp_name) > 30 else dp_name),
                                 "Value": f"{val} {unit}".strip(),
                                 "Conf": conf_class
                             })
@@ -820,13 +851,24 @@ def render_upload_pdf():
                     
                     # Requirements
                     req_data = extraction.get('hasRequirementSource', {}) or {}
-                    standards = req_data.get('standards', [])
-                    if standards and isinstance(standards, list):
+                    standards = []
+                    
+                    if isinstance(req_data, dict):
+                        std_val = req_data.get('standards', [])
+                        if isinstance(std_val, list):
+                            standards = std_val
+                    elif hasattr(req_data, 'standards'):
+                        std_val = getattr(req_data, 'standards', [])
+                        if isinstance(std_val, list):
+                            standards = std_val
+                    
+                    if standards:
                         st.markdown(f"""
                         #### Compliance Standards ({len(standards)})
                         """)
                         for std in standards:
-                            st.markdown(f"- **{std}:** Found in document (LLM extraction)")
+                            if std:
+                                st.markdown(f"- **{std}:** Found in document (LLM extraction)")
                     
                     st.divider()
                     
