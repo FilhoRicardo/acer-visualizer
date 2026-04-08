@@ -601,14 +601,14 @@ def render_upload_pdf():
         if openrouter_enabled and openrouter_api_key:
             model = openrouter_model
             input_cost, output_cost = MODEL_PRICING.get(model, (0.25, 1.25))
-            pages_est = max(1, page_count if page_count else 5)
+            pages_est = 5  # Default estimate, actual count shown after extraction
             tokens_in = pages_est * 2000
             tokens_out = min(tokens_in // 2, 1500)
             cost_est = (tokens_in / 1e6) * input_cost + (tokens_out / 1e6) * output_cost
             
             cost_col1, cost_col2, cost_col3 = st.columns(3)
             with cost_col1:
-                st.metric("Pages", pages_est)
+                st.metric("Est. Pages", "~5")
             with cost_col2:
                 st.metric("Tokens (in)", f"{tokens_in:,}")
             with cost_col3:
