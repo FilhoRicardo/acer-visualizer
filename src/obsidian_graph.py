@@ -21,7 +21,31 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
     - Force-directed layout
     - Hover tooltips
     - Drag and zoom
+    - Color gradient from green (100% conf) to red (0% conf)
     """
+    
+    def confidence_to_color(confidence: float) -> str:
+        """Convert confidence (0-1) to color: green -> yellow -> red"""
+        if confidence >= 1.0:
+            return "#22c55e"  # bright green
+        elif confidence <= 0.0:
+            return "#ef4444"  # bright red
+        
+        # Linear interpolation: green (#22c55e) -> yellow (#eab308) -> red (#ef4444)
+        if confidence >= 0.5:
+            # Green to Yellow (1.0 -> 0.5)
+            t = (confidence - 0.5) / 0.5
+            r = int(34 + (234 - 34) * t)
+            g = int(197 + (179 - 197) * t)
+            b = int(94 + (8 - 94) * t)
+        else:
+            # Yellow to Red (0.5 -> 0.0)
+            t = confidence / 0.5
+            r = int(239 + (234 - 239) * t)
+            g = int(68 + (179 - 68) * t)
+            b = int(68 + (8 - 68) * t)
+        
+        return f"#{r:02x}{g:02x}{b:02x}"
     
     # Build D3 graph data
     nodes = []
@@ -34,22 +58,20 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
         "label": graph.document_name.split('.')[0] if '.' in graph.document_name else graph.document_name,
         "type": "document",
         "found": True,
-        "size": 25
+        "size": 25,
+        "color": "#6366f1"
     })
     
-    # Relationship colors
-    rel_colors = {
-        "hasMetadata": "#4ade80",
-        "hasEquipment": "#60a5fa", 
-        "hasAssetType": "#a78bfa",
-        "hasDatapoint": "#fbbf24",
-        "hasImpactCategory": "#f472b6",
-        "hasRequirementSource": "#f87171"
-    }
-    
     for name, rel in graph.get_all_relationships():
+        # Skip NOT FOUND relationships entirely
+        if not rel.found:
+            continue
+            
         display_name = graph.RELATIONSHIP_DISPLAY_NAMES.get(name, name)
         rel_id = "rel_" + name
+        
+        # Color based on confidence
+        conf_color = confidence_to_color(rel.confidence)
         
         if isinstance(rel.value, list) and rel.value:
             count = len(rel.value)
@@ -61,16 +83,17 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
             "id": rel_id,
             "label": label,
             "type": "relationship",
-            "found": rel.found,
-            "color": rel_colors.get(display_name, "#888888"),
+            "found": True,
+            "color": conf_color,
             "displayName": display_name,
-            "size": 18 if rel.found else 14
+            "confidence": rel.confidence,
+            "size": 18
         })
         
         links.append({
             "source": doc_id,
             "target": rel_id,
-            "strength": 1 if rel.found else 0.3
+            "strength": 1
         })
         
         # Datapoint nodes
@@ -78,12 +101,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
             for dp in rel.value[:25]:
                 dp_id = "dp_" + str(dp.id)
                 
-                if dp.confidence >= 0.85:
-                    conf_color = "#4ade80"
-                elif dp.confidence >= 0.60:
-                    conf_color = "#fbbf24"
-                else:
-                    conf_color = "#f87171"
+                dp_conf_color = confidence_to_color(dp.confidence)
                 
                 tooltip = {
                     "id": dp.id,
@@ -99,7 +117,8 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
                     "label": "#" + str(dp.id),
                     "type": "datapoint",
                     "found": True,
-                    "color": conf_color,
+                    "color": dp_conf_color,
+                    "confidence": dp.confidence,
                     "size": 10,
                     "tooltip": tooltip
                 })
@@ -126,26 +145,23 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
     .node circle:hover { stroke: #fff; stroke-width: 3px; }
     .node.document circle { fill: #6366f1; }
     .node.relationship circle { fill-opacity: 0.9; }
-    .node.relationship.not-found circle { fill: #444; stroke: #555; stroke-dasharray: 4,2; }
     .node.datapoint circle { fill-opacity: 0.85; }
     .node text { fill: #ccc; font-size: 9px; font-family: inherit; text-anchor: middle; pointer-events: none; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
     .link { stroke: #444; stroke-opacity: 0.6; stroke-width: 1.5px; }
-    .link.not-found { stroke: #2a2a2a; stroke-opacity: 0.3; stroke-dasharray: 3,3; }
     #tooltip { position: absolute; background: #252525; border: 1px solid #444; border-radius: 8px; padding: 12px; font-size: 12px; color: #e0e0e0; pointer-events: none; opacity: 0; transition: opacity 0.2s; max-width: 320px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 1000; }
     #tooltip.visible { opacity: 1; }
     #tooltip .title { font-weight: 600; color: #fff; margin-bottom: 8px; }
     #tooltip .row { display: flex; justify-content: space-between; margin: 4px 0; gap: 16px; }
     #tooltip .label { color: #888; }
     #tooltip .value { color: #ddd; }
-    #tooltip .conf-high { color: #4ade80; }
-    #tooltip .conf-medium { color: #fbbf24; }
-    #tooltip .conf-low { color: #f87171; }
+    #tooltip .confidence { font-weight: 600; }
     #controls { position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; }
     #controls button { background: #2a2a2a; border: 1px solid #444; color: #ccc; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; transition: all 0.2s; }
     #controls button:hover { background: #3a3a3a; color: #fff; }
     #legend { position: absolute; bottom: 10px; left: 10px; background: #252525cc; border: 1px solid #333; border-radius: 8px; padding: 10px 14px; font-size: 11px; color: #aaa; }
     #legend .item { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
     #legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+    #legend .gradient { width: 80px; height: 10px; border-radius: 3px; background: linear-gradient(to right, #ef4444, #eab308, #22c55e); }
     """
     
     # JavaScript - avoiding f-string conflicts by using string concatenation
@@ -190,19 +206,15 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
         .selectAll(".link")
         .data(graphData.links)
         .join("line")
-        .attr("class", function(d) { return d.strength < 1 ? "link not-found" : "link"; })
-        .style("stroke", function(d) { return d.strength >= 1 ? "#444" : "#2a2a2a"; })
-        .style("stroke-opacity", function(d) { return d.strength >= 1 ? 0.6 : 0.3; });
+        .attr("class", "link")
+        .style("stroke", "#444")
+        .style("stroke-opacity", 0.6);
     
     const node = g.append("g")
         .selectAll(".node")
         .data(graphData.nodes)
         .join("g")
-        .attr("class", function(d) {
-            var cls = "node " + d.type;
-            if (d.type === "relationship" && !d.found) cls += " not-found";
-            return cls;
-        })
+        .attr("class", function(d) { return "node " + d.type; })
         .call(d3.drag()
             .on("start", dragstarted)
             .on("drag", dragged)
@@ -238,13 +250,12 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
             return '<div class="title">Document</div><div class="value">' + d.label + '</div>';
         }
         if (d.type === "relationship") {
-            var status = d.found ? "Found" : "Not Found";
-            return '<div class="title">' + (d.displayName || d.label) + '</div><div class="row"><span class="label">Status</span><span class="value">' + status + '</span></div>';
+            var conf = d.confidence ? (d.confidence * 100).toFixed(0) + '%' : 'N/A';
+            return '<div class="title">' + (d.displayName || d.label) + '</div><div class="row"><span class="label">Confidence</span><span class="confidence" style="color:' + d.color + '">' + conf + '</span></div>';
         }
         if (d.type === "datapoint" && d.tooltip) {
             var t = d.tooltip;
-            var confClass = t.confidence >= 0.85 ? "conf-high" : t.confidence >= 0.60 ? "conf-medium" : "conf-low";
-            return '<div class="title">#' + t.id + ': ' + t.datapoint + '</div><div class="row"><span class="label">Value</span><span class="value">' + t.value + ' ' + t.unit + '</span></div><div class="row"><span class="label">Category</span><span class="value">' + t.category + '</span></div><div class="row"><span class="label">Confidence</span><span class="value ' + confClass + '">' + (t.confidence * 100).toFixed(0) + '%</span></div>';
+            return '<div class="title">#' + t.id + ': ' + t.datapoint + '</div><div class="row"><span class="label">Value</span><span class="value">' + t.value + ' ' + t.unit + '</span></div><div class="row"><span class="label">Category</span><span class="value">' + t.category + '</span></div><div class="row"><span class="label">Confidence</span><span class="confidence" style="color:' + d.color + '">' + (t.confidence * 100).toFixed(0) + '%</span></div>';
         }
         return '<div class="title">' + d.label + '</div>';
     }
@@ -295,12 +306,12 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
     </div>
     <div id="legend">
         <div class="item"><div class="dot" style="background:#6366f1"></div>Document</div>
-        <div class="item"><div class="dot" style="background:#4ade80"></div>Metadata</div>
-        <div class="item"><div class="dot" style="background:#60a5fa"></div>Equipment</div>
-        <div class="item"><div class="dot" style="background:#a78bfa"></div>Asset Type</div>
-        <div class="item"><div class="dot" style="background:#fbbf24"></div>Datapoints</div>
-        <div class="item"><div class="dot" style="background:#f472b6"></div>Impact Category</div>
-        <div class="item"><div class="dot" style="background:#f87171"></div>Requirement Source</div>
+        <div style="margin-top: 8px; margin-bottom: 4px; font-weight: 600;">Confidence</div>
+        <div class="item"><div class="gradient"></div></div>
+        <div class="item" style="justify-content: space-between; font-size: 10px;">
+            <span>0%</span>
+            <span>100%</span>
+        </div>
     </div>
     
     <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -325,10 +336,14 @@ def render_obsidian_graph(graph: AcerGraph, height: str = "650px") -> None:
 def render_confidence_legend():
     """Show confidence level legend."""
     st.markdown("""
-    **Confidence Levels:**
-    - High (>=85%) -- Reliable extraction
-    - Medium (60-84%) -- Verify manually  
-    - Low (<60%) -- Needs review
+    **Confidence Scale:**
+    | Color | Meaning |
+    |-------|---------|
+    | 🟢 Green | 100% - High confidence |
+    | 🟡 Yellow | 50% - Medium confidence |
+    | 🔴 Red | 0% - Low confidence |
+    
+    Colors interpolate smoothly between these values.
     """)
 
 
