@@ -46,65 +46,135 @@ MODEL_PRICING = {
 }
 
 
+def _to_str(val, default=''):
+    """Convert value to string safely."""
+    if val is None:
+        return default
+    return str(val)
+
 def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
     """
-    Build an AcerGraph from LLM extraction results.
+    Build an AcerGraph from extraction results.
     
-    Args:
-        extraction: Dict with metadata, equipment, datapoints, requirements
-        filename: Document filename
-    
-    Returns:
-        AcerGraph with all extracted relationships
+    Handles two input formats:
+    1. OpenRouter raw dict (keys: hasEquipment, hasDatapoint, etc.)
+    2. Demo extraction dict (keys: equipment, datapoints, etc. with dataclass values)
     """
-    # Build metadata
+    # Detect format and normalize to OpenRouter-style dict
+    is_demo_format = 'equipment' in extraction or 'datapoints' in extraction
+    
+    if is_demo_format:
+        # Demo format: convert dataclass objects to dicts
+        equip = extraction.get('equipment')
+        asset_type = extraction.get('asset_type')
+        dps = extraction.get('datapoints', [])
+        reqs = extraction.get('requirements', [])
+        
+        equip_data = {
+            'name': getattr(equip, 'name', None),
+            'manufacturer': getattr(equip, 'manufacturer', None),
+            'confidence': getattr(equip, 'confidence', 0.8)
+        } if equip else {}
+        
+        asset_data = {
+            'type': getattr(asset_type, 'type', None),
+            'confidence': getattr(asset_type, 'confidence', 0.8)
+        } if asset_type else {}
+        
+        dp_list = []
+        for dp in dps:
+            dp_list.append({
+                'aligned_datapoint': getattr(dp, 'aligned_datapoint', 'Unknown'),
+                'value': getattr(dp, 'value', ''),
+                'unit': getattr(dp, 'unit', ''),
+                'confidence': getattr(dp, 'confidence', 0.5),
+                'source_page': str(getattr(dp, 'source_page', '?')),
+                'impact_category': getattr(dp, 'impact_category', ''),
+                'impact_subcategory': getattr(dp, 'impact_subcategory', '')
+            })
+        
+        standards = [getattr(r, 'standard_name', '') for r in reqs if getattr(r, 'standard_name', '')]
+        req_data = {'standards': standards, 'confidence': 0.85}
+        
+        meta = extraction.get('metadata')
+        metadata_data = {
+            'filename': getattr(meta, 'filename', filename) if meta else filename,
+            'pageCount': getattr(meta, 'page_count', 0) if meta else 0
+        }
+        
+    else:
+        # OpenRouter raw dict format
+        equip_data = extraction.get('hasEquipment', {}) or {}
+        asset_data = extraction.get('hasAssetType', {}) or {}
+        dp_list = extraction.get('hasDatapoint', []) or []
+        req_data = extraction.get('hasRequirementSource', {}) or {}
+        metadata_data = extraction.get('hasMetadata', {}) or {}
+    
+    # Build metadata relationship
     metadata_rel = Relationship(
         name="hasMetadata",
         found=True,
         value={
-            "filename": extraction.get('metadata', {}).filename if extraction.get('metadata') else filename,
-            "pages": extraction.get('metadata', {}).page_count if extraction.get('metadata') else 0,
-            "size": f"{extraction.get('metadata', {}).file_size_kb:.1f} KB" if extraction.get('metadata') else "Unknown",
+            "filename": metadata_data.get('filename', filename) if isinstance(metadata_data, dict) else filename,
+            "pages": metadata_data.get('pageCount', metadata_data.get('page_count', 0)) if isinstance(metadata_data, dict) else 0,
             "extractedAt": datetime.now().isoformat()
         },
         confidence=1.0,
         status=RelationshipStatus.FOUND
     )
     
-    # Build equipment
-    equip = extraction.get('equipment')
+    # Build equipment relationship
+    equip_name = equip_data.get('name') if isinstance(equip_data, dict) else getattr(equip_data, 'name', None)
+    equip_conf = equip_data.get('confidence', 0.8) if isinstance(equip_data, dict) else getattr(equip_data, 'confidence', 0.8)
     equipment_rel = Relationship(
         name="hasEquipment",
-        found=equip is not None,
-        value=equip.name if equip else None,
-        confidence=equip.confidence if equip else 0.0,
-        source_location="LLM Extraction",
-        status=RelationshipStatus.FOUND if equip else RelationshipStatus.NOT_FOUND
+        found=bool(equip_name),
+        value=equip_name,
+        confidence=equip_conf,
+        source_location="OpenRouter LLM" if not is_demo_format else "Demo Extraction",
+        status=RelationshipStatus.FOUND if equip_name else RelationshipStatus.NOT_FOUND
     )
     
-    # Build asset type (could infer from equipment name or use LLM extraction)
-    asset_type = extraction.get('asset_type')
+    # Build asset type relationship
+    asset_val = asset_data.get('type') if isinstance(asset_data, dict) else getattr(asset_data, 'type', None)
+    asset_conf = asset_data.get('confidence', 0.8) if isinstance(asset_data, dict) else getattr(asset_data, 'confidence', 0.8)
     asset_type_rel = Relationship(
         name="hasAssetType",
-        found=asset_type is not None and bool(asset_type.type),
-        value=asset_type.type if asset_type else None,
-        confidence=asset_type.confidence if asset_type else 0.0,
-        status=RelationshipStatus.FOUND if asset_type and asset_type.type else RelationshipStatus.NOT_FOUND
+        found=bool(asset_val),
+        value=asset_val,
+        confidence=asset_conf,
+        status=RelationshipStatus.FOUND if asset_val else RelationshipStatus.NOT_FOUND
     )
     
-    # Build datapoints
-    dps = extraction.get('datapoints', [])
+    # Build datapoint objects
     datapoint_objects = []
-    for i, dp in enumerate(dps):
+    for i, dp in enumerate(dp_list):
+        if isinstance(dp, dict):
+            dp_name = dp.get('aligned_datapoint', 'Unknown')
+            dp_val = dp.get('value', '')
+            dp_unit = dp.get('unit', '')
+            dp_conf = dp.get('confidence', 0.5)
+            dp_cat = dp.get('impact_category')
+            dp_subcat = dp.get('impact_subcategory')
+            dp_page = str(dp.get('source_page', '?'))
+        else:
+            dp_name = getattr(dp, 'aligned_datapoint', 'Unknown')
+            dp_val = getattr(dp, 'value', '')
+            dp_unit = getattr(dp, 'unit', '')
+            dp_conf = getattr(dp, 'confidence', 0.5)
+            dp_cat = getattr(dp, 'impact_category', '')
+            dp_subcat = getattr(dp, 'impact_subcategory', '')
+            dp_page = str(getattr(dp, 'source_page', '?'))
+        
         dp_obj = Datapoint(
             id=i + 1,
-            aligned_datapoint=dp.aligned_datapoint,
-            impact_category=dp.impact_category,
-            impact_subcategory=dp.impact_subcategory or "General",
-            value=str(dp.value),
-            unit=dp.unit,
-            confidence=dp.confidence,
-            source_page=str(dp.source_page) if dp.source_page else "?"
+            aligned_datapoint=dp_name,
+            impact_category=dp_cat,
+            impact_subcategory=dp_subcat or "General",
+            value=str(dp_val),
+            unit=dp_unit,
+            confidence=dp_conf,
+            source_page=dp_page
         )
         datapoint_objects.append(dp_obj)
     
@@ -116,9 +186,12 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
         status=RelationshipStatus.FOUND if datapoint_objects else RelationshipStatus.NOT_FOUND
     )
     
-    # Build impact category (from datapoints if available)
-    categories = set(dp.impact_category for dp in dps if dp.impact_category)
-    impact_cat_value = ", ".join(categories) if categories else None
+    # Build impact category
+    if isinstance(dp_list[0], dict) if dp_list else False:
+        categories = set(dp.get('impact_category') for dp in dp_list if isinstance(dp, dict) and dp.get('impact_category'))
+    else:
+        categories = set(getattr(dp, 'impact_category', '') for dp in dp_list if getattr(dp, 'impact_category', ''))
+    impact_cat_value = ", ".join(sorted(categories)) if categories else None
     impact_cat_rel = Relationship(
         name="hasImpactCategory",
         found=impact_cat_value is not None,
@@ -128,13 +201,18 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
     )
     
     # Build requirement sources
-    reqs = extraction.get('requirements', [])
-    req_values = [r.standard_name for r in reqs] if reqs else []
+    if isinstance(req_data, dict):
+        standards = req_data.get('standards', [])
+        req_conf = req_data.get('confidence', 0.85)
+    else:
+        standards = [getattr(r, 'standard_name', '') for r in req_data if getattr(r, 'standard_name', '')]
+        req_conf = 0.85
+    req_values = standards if isinstance(standards, list) else []
     req_rel = Relationship(
         name="hasRequirementSource",
         found=len(req_values) > 0,
         value=req_values,
-        confidence=0.85 if req_values else 0.0,
+        confidence=req_conf if req_values else 0.0,
         status=RelationshipStatus.FOUND if req_values else RelationshipStatus.NOT_FOUND
     )
     
@@ -149,7 +227,7 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
         has_impact_category=impact_cat_rel,
         has_requirement_source=req_rel,
         extracted_at=datetime.now(),
-        llm_model="OpenRouter" if extraction.get('llm_extraction') else "Demo",
+        llm_model="OpenRouter" if not is_demo_format else "Demo",
         processing_time_seconds=0.0
     )
     
@@ -648,44 +726,8 @@ def render_upload_pdf():
                             filename=uploaded_file.name
                         )
                         
-                        # Convert LLM result to extraction format
-                        extraction = {
-                            'metadata': type('obj', (object,), {
-                                'filename': uploaded_file.name,
-                                'file_size_kb': size_kb,
-                                'page_count': page_count,
-                                'extracted_at': datetime.now().isoformat()
-                            })(),
-                            'equipment': type('obj', (object,), {
-                                'name': llm_result.get('hasEquipment', {}).get('name', 'Unknown'),
-                                'manufacturer': llm_result.get('hasEquipment', {}).get('manufacturer', 'Unknown'),
-                                'confidence': llm_result.get('hasEquipment', {}).get('confidence', 0.5)
-                            })() if llm_result.get('hasEquipment') else None,
-                            'asset_type': type('obj', (object,), {
-                                'type': llm_result.get('hasAssetType', {}).get('type', ''),
-                                'confidence': llm_result.get('hasAssetType', {}).get('confidence', 0.5)
-                            })() if llm_result.get('hasAssetType') else None,
-                            'datapoints': [
-                                type('obj', (object,), {
-                                    'aligned_datapoint': dp.get('aligned_datapoint', 'Unknown'),
-                                    'value': dp.get('value', ''),
-                                    'unit': dp.get('unit', ''),
-                                    'confidence': dp.get('confidence', 0.5),
-                                    'source_page': dp.get('source_page', '?'),
-                                    'impact_category': dp.get('impact_category', ''),
-                                    'impact_subcategory': dp.get('impact_subcategory', '')
-                                })
-                                for dp in llm_result.get('hasDatapoint', [])
-                            ],
-                            'requirements': [
-                                type('obj', (object,), {
-                                    'standard_name': std,
-                                    'requirement_text': f"Found in document (LLM extraction)"
-                                })
-                                for std in llm_result.get('hasRequirementSource', {}).get('standards', [])
-                            ],
-                            'llm_extraction': True
-                        }
+                        # Use LLM result directly (raw dict)
+                        extraction = llm_result
                         
                     else:
                         # Fall back to mock extraction
@@ -719,56 +761,72 @@ def render_upload_pdf():
                     
                     st.markdown("### Extracted Data")
                     
-                    # Metadata
-                    if extraction['metadata']:
-                        meta = extraction['metadata']
+                    # Metadata (handle both demo dataclass and LLM dict formats)
+                    meta = extraction.get('metadata') or extraction.get('hasMetadata', {})
+                    meta_filename = getattr(meta, 'filename', '') or meta.get('filename', uploaded_file.name) if isinstance(meta, dict) else uploaded_file.name
+                    meta_pages = getattr(meta, 'page_count', None) or meta.get('pageCount', meta.get('page_count', '?')) if isinstance(meta, dict) else '?'
+                    meta_size = f"{getattr(meta, 'file_size_kb', 0):.1f} KB" if hasattr(meta, 'file_size_kb') else (f"{meta.get('file_size_kb', 0):.1f} KB" if isinstance(meta, dict) and meta.get('file_size_kb') else 'N/A')
+                    meta_time = getattr(meta, 'extracted_at', '') or meta.get('extractedAt', datetime.now().isoformat()) if isinstance(meta, dict) else datetime.now().isoformat()
+                    
+                    if meta:
                         st.markdown("""
                         #### Document Metadata
-                        | Property | Value |
-                        |----------|-------|
                         """)
                         st.table({
-                            "Property": ["Filename", "Size", "Pages", "Extracted At"],
-                            "Value": [meta.filename, f"{meta.file_size_kb:.1f} KB", 
-                                     str(meta.page_count or "Unknown"), meta.extracted_at]
+                            "Property": ["Filename", "Pages"],
+                            "Value": [meta_filename, str(meta_pages)]
                         })
                     
-                    # Equipment
-                    if extraction['equipment']:
-                        equip = extraction['equipment']
-                        conf_emoji = "✓" if equip.confidence >= 0.85 else "⚠️" if equip.confidence >= 0.6 else "✗"
+                    # Equipment detected
+                    equip_data = extraction.get('hasEquipment', {}) or {}
+                    equip_name = equip_data.get('name', 'Unknown')
+                    equip_conf = equip_data.get('confidence', 0.5)
+                    equip_manuf = equip_data.get('manufacturer', 'Unknown')
+                    if equip_name and equip_name != 'Unknown':
+                        conf_emoji = "✅" if equip_conf >= 0.85 else "⚠️"
                         st.markdown(f"""
                         #### Equipment Detected {conf_emoji}
-                        - **Name:** {equip.name}
-                        - **Manufacturer:** {equip.manufacturer}
-                        - **Confidence:** {equip.confidence:.0%}
+                        - **Name:** {equip_name}
+                        - **Manufacturer:** {equip_manuf}
+                        - **Confidence:** {equip_conf:.0%}
                         """)
                     
                     # Datapoints found
-                    if extraction['datapoints']:
+                    dp_list = extraction.get('hasDatapoint', []) or []
+                    if dp_list:
                         st.markdown(f"""
-                        #### Data Points Found ({len(extraction['datapoints'])})
+                        #### Data Points Found ({len(dp_list)})
                         """)
                         
                         dp_data = []
-                        for dp in extraction['datapoints']:
-                            conf_class = "✓" if dp.confidence >= 0.85 else "⚠️" if dp.confidence >= 0.6 else "✗"
+                        for dp in dp_list:
+                            if not isinstance(dp, dict):
+                                continue
+                            conf = dp.get('confidence', 0.5)
+                            conf_class = "✓" if conf >= 0.85 else "⚠️" if conf >= 0.6 else "✗"
+                            cat = dp.get('impact_category', '') or ''
+                            dp_name = dp.get('aligned_datapoint', 'Unknown') or 'Unknown'
+                            val = dp.get('value', '')
+                            unit = dp.get('unit', '')
                             dp_data.append({
-                                "Category": dp.impact_category[:20] + "..." if len(dp.impact_category) > 20 else dp.impact_category,
-                                "Datapoint": dp.aligned_datapoint[:30] + "..." if len(dp.aligned_datapoint) > 30 else dp.aligned_datapoint,
-                                "Value": f"{dp.value} {dp.unit}",
+                                "Category": cat[:20] + "..." if len(cat) > 20 else cat,
+                                "Datapoint": dp_name[:30] + "..." if len(dp_name) > 30 else dp_name,
+                                "Value": f"{val} {unit}".strip(),
                                 "Conf": conf_class
                             })
                         
-                        st.dataframe(dp_data, use_container_width=True)
+                        if dp_data:
+                            st.dataframe(dp_data, use_container_width=True)
                     
                     # Requirements
-                    if extraction['requirements']:
+                    req_data = extraction.get('hasRequirementSource', {}) or {}
+                    standards = req_data.get('standards', [])
+                    if standards and isinstance(standards, list):
                         st.markdown(f"""
-                        #### Compliance Standards ({len(extraction['requirements'])})
+                        #### Compliance Standards ({len(standards)})
                         """)
-                        for req in extraction['requirements']:
-                            st.markdown(f"- **{req.standard_name}:** {req.requirement_text}")
+                        for std in standards:
+                            st.markdown(f"- **{std}:** Found in document (LLM extraction)")
                     
                     st.divider()
                     
