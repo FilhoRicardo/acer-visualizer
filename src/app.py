@@ -6,7 +6,9 @@ Run with: streamlit run src/app.py
 """
 import streamlit as st
 import json
+import io
 from datetime import datetime
+import pdfplumber
 
 # Import models
 import sys
@@ -384,7 +386,8 @@ def main():
         page = st.radio(
             "Go to",
             ["⚙️ Settings", "📤 Upload PDF", "🕸️ Graph View", "📊 Relationship Cards", "📄 Sample Documents"],
-            label_visibility="collapsed"
+            label_visibility="collapsed",
+            key="nav_selection"
         )
         
         st.divider()
@@ -654,7 +657,8 @@ def render_upload_pdf():
     uploaded_file = st.file_uploader(
         "Choose a PDF file",
         type=["pdf"],
-        help="Max file size: 50MB"
+        help="Max file size: 50MB",
+        max_size=50
     )
     
     if uploaded_file:
@@ -700,8 +704,6 @@ def render_upload_pdf():
             with st.spinner("Extracting data from document..."):
                 try:
                     # Read PDF text using pdfplumber
-                    import pdfplumber
-                    import io
                     
                     pdf_bytes = uploaded_file.getvalue()
                     document_text = ""
@@ -889,10 +891,11 @@ def render_upload_pdf():
                     
                     with col_view:
                         if st.button("🔍 View Full Results", use_container_width=True):
-                            # Build and auto-navigate to graph
+                            # Build and switch to graph view
                             graph = build_graph_from_extraction(extraction, uploaded_file.name)
                             st.session_state.current_graph = graph
-                            st.session_state._nav_to = "🕸️ Graph View"
+                            # Navigate by switching the sidebar selection
+                            st.session_state['nav_selection'] = "🕸️ Graph View"
                             st.rerun()
                 
                 except Exception as e:

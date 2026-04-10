@@ -66,10 +66,11 @@ def fetch_available_models(api_key: str) -> list[dict]:
         models = data.get("data", [])
         
         # Return list of (id, name) tuples sorted by popularity
+        # Filter: include models that are NOT GPT OR are Claude (avoid cheap/noisy GPT variants, keep Claude family)
         return [
             {"id": m["id"], "name": m.get("name", m["id"])}
             for m in models
-            if m.get("id") and "gpt" not in m.get("id", "").lower() or "claude" in m.get("id", "").lower()
+            if m.get("id") and ("gpt" not in m.get("id", "").lower() or "claude" in m.get("id", "").lower())
         ][:50]  # Limit to top 50 to avoid dropdown overflow
         
     except requests.exceptions.RequestException as e:
@@ -191,7 +192,7 @@ def validate_api_key(api_key: str) -> bool:
         )
         return response.status_code == 200
         
-    except:
+    except Exception:
         return False
 
 

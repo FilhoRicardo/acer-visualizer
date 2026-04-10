@@ -1,8 +1,31 @@
+# Python
 __pycache__/
+*.py[cod]
 *.pyc
-.venv/
-.git/
 *.egg-info/
 dist/
 build/
-__pycache__/
+
+# Streamlit
+.streamlit/
+
+# Virtual env
+venv/
+.venv/
+env/
+.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data / uploads
+*.pdf
+*.acer.json
+
+# Logs
+*.log
