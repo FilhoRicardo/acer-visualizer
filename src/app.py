@@ -653,11 +653,16 @@ def render_upload_pdf():
     uploaded_file = st.file_uploader(
         "Choose a PDF file",
         type=["pdf"],
-        help="Max file size: 50MB",
-        max_size=50
+        help="Max file size: 50MB"
     )
     
     if uploaded_file:
+        # Enforce 50MB file size limit
+        MAX_FILE_SIZE = 50 * 1024 * 1024  # 50MB in bytes
+        file_size = len(uploaded_file.getvalue())
+        if file_size > MAX_FILE_SIZE:
+            st.error(f"File too large: {file_size / 1024 / 1024:.1f} MB. Maximum allowed is 50 MB.")
+            st.stop()
         st.divider()
         
         # Show file info
