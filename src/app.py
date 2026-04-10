@@ -424,8 +424,13 @@ def render_graph_view():
     if 'current_graph' not in st.session_state:
         st.session_state.current_graph = None
     
-    # Check if we have a last extraction to offer loading
+    # Auto-load graph from last extraction if available and not yet loaded
     has_last_extraction = 'last_extraction' in st.session_state and st.session_state.last_extraction is not None
+    if has_last_extraction and not st.session_state.current_graph:
+        st.session_state.current_graph = build_graph_from_extraction(
+            st.session_state.last_extraction,
+            st.session_state.last_extraction_filename
+        )
     
     # Toolbar
     col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
@@ -440,18 +445,9 @@ def render_graph_view():
             st.caption("No document loaded — select a sample or upload")
     
     with col2:
-        if has_last_extraction and not st.session_state.current_graph:
-            if st.button("📂 Load Last Extraction", use_container_width=True):
-                graph = build_graph_from_extraction(
-                    st.session_state.last_extraction,
-                    st.session_state.last_extraction_filename
-                )
-                st.session_state.current_graph = graph
-                st.rerun()
-        else:
-            if st.button("📊 Load Sample", use_container_width=True):
-                st.session_state.current_graph = create_carrier_rtu_graph()
-                st.rerun()
+        if st.button("📊 Load Sample", use_container_width=True):
+            st.session_state.current_graph = create_carrier_rtu_graph()
+            st.rerun()
     
     with col3:
         if st.button("📄 Simple Demo", use_container_width=True):
@@ -957,11 +953,16 @@ def render_graph_network_view():
     if 'current_graph' not in st.session_state:
         st.session_state.current_graph = None
     
-    # Check if we have a last extraction to offer loading
+    # Auto-load graph from last extraction if available and not yet loaded
     has_last_extraction = 'last_extraction' in st.session_state and st.session_state.last_extraction is not None
+    if has_last_extraction and not st.session_state.current_graph:
+        st.session_state.current_graph = build_graph_from_extraction(
+            st.session_state.last_extraction,
+            st.session_state.last_extraction_filename
+        )
     
     # Toolbar
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2 = st.columns([2, 1])
     
     with col1:
         st.subheader("ACER Graph Network")
@@ -973,22 +974,8 @@ def render_graph_network_view():
             st.caption("No document loaded")
     
     with col2:
-        if has_last_extraction and not st.session_state.current_graph:
-            if st.button("📂 Load Last Extraction", use_container_width=True):
-                graph = build_graph_from_extraction(
-                    st.session_state.last_extraction,
-                    st.session_state.last_extraction_filename
-                )
-                st.session_state.current_graph = graph
-                st.rerun()
-    
-    with col3:
         if st.button("🗑️ Clear", use_container_width=True):
             st.session_state.current_graph = None
-            if has_last_extraction:
-                st.info("Graph cleared. You can reload the last extraction above.")
-            else:
-                st.info("Graph cleared.")
             st.rerun()
     
     st.divider()
