@@ -39,6 +39,7 @@ class Datapoint:
     impact_category: Optional[str] = None  # ACER impact category
     impact_subcategory: Optional[str] = None
     source_page: Optional[str] = None
+    source_line: Optional[int] = None
     source_location: Optional[str] = None
 
 
