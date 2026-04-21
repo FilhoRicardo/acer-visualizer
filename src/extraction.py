@@ -87,6 +87,7 @@ def extract_from_text(filename: str, text: str) -> dict:
             normalized_value=None,
             confidence=0.92,
             source_page="1",
+            source_line=14,
             source_location="Specifications"
         ))
     
@@ -100,6 +101,7 @@ def extract_from_text(filename: str, text: str) -> dict:
             unit="",
             confidence=0.95,
             source_page="1",
+            source_line=18,
             source_location="Ratings"
         ))
     

@@ -114,7 +114,9 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
                     "value": dp.value,
                     "unit": dp.unit or "",
                     "category": dp.impact_category,
-                    "confidence": dp.confidence
+                    "confidence": dp.confidence,
+                    "sourcePage": dp.source_page or "",
+                    "sourceLocation": dp.source_location or ""
                 }
                 
                 nodes.append({
@@ -260,7 +262,11 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
         }
         if (d.type === "datapoint" && d.tooltip) {
             var t = d.tooltip;
-            return '<div class="title">#' + t.id + ': ' + t.datapoint + '</div><div class="row"><span class="label">Value</span><span class="value">' + t.value + ' ' + t.unit + '</span></div><div class="row"><span class="label">Category</span><span class="value">' + t.category + '</span></div><div class="row"><span class="label">Confidence</span><span class="confidence" style="color:' + d.color + '">' + (t.confidence * 100).toFixed(0) + '%</span></div>';
+            var sourceInfo = "";
+            if (t.sourcePage || t.sourceLocation) {
+                sourceInfo = '<div class="row"><span class="label">Source</span><span class="value">' + (t.sourcePage ? 'p.' + t.sourcePage : '') + (t.sourcePage && t.sourceLocation ? ' · ' : '') + (t.sourceLocation || '') + '</span></div>';
+            }
+            return '<div class="title">#' + t.id + ': ' + t.datapoint + '</div><div class="row"><span class="label">Value</span><span class="value">' + t.value + ' ' + t.unit + '</span></div><div class="row"><span class="label">Category</span><span class="value">' + t.category + '</span></div><div class="row"><span class="label">Confidence</span><span class="confidence" style="color:' + d.color + '">' + (t.confidence * 100).toFixed(0) + '%</span></div>' + sourceInfo;
         }
         return '<div class="title">' + d.label + '</div>';
     }

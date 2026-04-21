@@ -165,10 +165,16 @@ def create_acer_graph_view(graph: AcerGraph, height: str = "600px") -> str:
                 
                 conf_color = "#22c55e" if dp.confidence >= 0.85 else "#f59e0b" if dp.confidence >= 0.6 else "#ef4444"
                 
+                source_info = ""
+                if dp.source_page:
+                    source_info += f"Page: {dp.source_page}\n"
+                if dp.source_location:
+                    source_info += f"Location: {dp.source_location}\n"
+
                 net.add_node(
                     dp_id,
                     label=f"#{dp.id} {dp.aligned_datapoint[:15]}...",
-                    title=f"ACER Datapoint\n\n{dp.aligned_datapoint}\nValue: {dp.value} {dp.unit or ''}\nConfidence: {dp.confidence:.0%}\nCategory: {dp.impact_category}",
+                    title=f"ACER Datapoint\n\n{dp.aligned_datapoint}\nValue: {dp.value} {dp.unit or ''}\nConfidence: {dp.confidence:.0%}\nCategory: {dp.impact_category}\n{source_info}".strip(),
                     color=conf_color,
                     shape="dot",
                     size=15,

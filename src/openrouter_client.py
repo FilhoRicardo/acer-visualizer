@@ -82,6 +82,7 @@ def extract_with_openrouter(
     api_key: str,
     model_id: str,
     document_text: str,
+    page_texts: list[str],
     filename: str,
 ) -> dict:
     """
@@ -90,7 +91,8 @@ def extract_with_openrouter(
     Args:
         api_key: OpenRouter API key
         model_id: Model ID (e.g., 'anthropic/claude-3-haiku')
-        document_text: Extracted text from PDF
+        document_text: Combined extracted text from PDF
+        page_texts: List of text per page, for line-number tracking
         filename: Original filename for context
     
     Returns:
@@ -110,8 +112,9 @@ Extract the following ACER (Asset Carbon and Energy Reporting) relationships fro
    - impact_category: Climate Health, Asset Integrity, or Human Health
    - impact_subcategory: Energy, Greenhouse Gas Emissions, Physical Characteristics, etc.
    - confidence: How confident are you? (0.0-1.0)
-   - source_page: Which page this was found on
-   - source_location: Table name, section name, etc.
+   - source_page: Which page number this was found on
+   - source_line: The approximate line number on that page (count lines within the page)
+   - source_location: Table name, section name, or specific location description
 
 4. **hasMetadata**: Document metadata (page count if known, file info)
 5. **hasImpactCategory**: Suggested sustainability dimension if not explicit
@@ -122,7 +125,7 @@ Return your response as a JSON object with these exact keys:
   "hasEquipment": {"name": "...", "manufacturer": "...", "confidence": 0.0-1.0},
   "hasAssetType": {"type": "...", "confidence": 0.0-1.0},
   "hasDatapoint": [
-    {"aligned_datapoint": "...", "value": "...", "unit": "...", "impact_category": "...", "impact_subcategory": "...", "confidence": 0.0-1.0, "source_page": "...", "source_location": "..."}
+    {"aligned_datapoint": "...", "value": "...", "unit": "...", "impact_category": "...", "impact_subcategory": "...", "confidence": 0.0-1.0, "source_page": "...", "source_line": 42, "source_location": "..."}
   ],
   "hasMetadata": {"pageCount": N, "filename": "..."},
   "hasImpactCategory": {"suggested": "...", "confidence": 0.0-1.0},
@@ -131,7 +134,23 @@ Return your response as a JSON object with these exact keys:
 
 Only extract datapoints you are confident about. If you cannot find a value, omit it or set confidence to low."""
 
-    user_prompt = f"Extract ACER data from this document:\n\nFilename: {filename}\n\n--- DOCUMENT CONTENT ---\n{document_text}\n--- END DOCUMENT ---\n\nReturn only the JSON object, no additional text."
+    # Format document text with page + line markers so the LLM can track source_page and source_line
+    formatted_pages = []
+    for page_num, page_text in enumerate(document_text_list, start=1):
+        lines = page_text.split('\n')
+        numbered_lines = [f"[L{i+1}] {line}" for i, line in enumerate(lines) if line.strip()]
+        formatted_pages.append(f"[PAGE {page_num}]\n" + "\n".join(numbered_lines))
+    formatted_document = "\n\n".join(formatted_pages)
+
+    user_prompt = f"""Extract ACER data from this document:
+
+Filename: {filename}
+
+--- DOCUMENT CONTENT ---
+{formatted_document}
+--- END DOCUMENT ---
+
+Return only the JSON object, no additional text. Use the PAGE numbers in your source_page fields."""
 
     try:
         headers = {

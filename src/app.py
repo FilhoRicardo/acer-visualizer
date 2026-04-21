@@ -91,6 +91,7 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
                 'unit': getattr(dp, 'unit', ''),
                 'confidence': getattr(dp, 'confidence', 0.5),
                 'source_page': str(getattr(dp, 'source_page', '?')),
+                'source_line': getattr(dp, 'source_line', None),
                 'impact_category': getattr(dp, 'impact_category', ''),
                 'impact_subcategory': getattr(dp, 'impact_subcategory', '')
             })
@@ -159,6 +160,7 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
             dp_cat = dp.get('impact_category')
             dp_subcat = dp.get('impact_subcategory')
             dp_page = str(dp.get('source_page', '?'))
+            dp_line = dp.get('source_line')
         else:
             dp_name = getattr(dp, 'aligned_datapoint', 'Unknown')
             dp_val = getattr(dp, 'value', '')
@@ -167,7 +169,8 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
             dp_cat = getattr(dp, 'impact_category', '')
             dp_subcat = getattr(dp, 'impact_subcategory', '')
             dp_page = str(getattr(dp, 'source_page', '?'))
-        
+            dp_line = getattr(dp, 'source_line')
+
         dp_obj = Datapoint(
             id=i + 1,
             aligned_datapoint=dp_name,
@@ -176,7 +179,8 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
             value=str(dp_val),
             unit=dp_unit,
             confidence=dp_conf,
-            source_page=dp_page
+            source_page=dp_page,
+            source_line=dp_line
         )
         datapoint_objects.append(dp_obj)
     
@@ -350,13 +354,23 @@ def render_datapoint_item(datapoint: Datapoint):
     """Render a single datapoint row."""
     conf_class = datapoint.confidence_level.value
     conf_color = "#11998e" if conf_class == "high" else "#f59e0b" if conf_class == "medium" else "#eb3349"
-    conf_icon = "✓" if conf_class == "high" else "⚠️" if conf_class == "medium" else "✗"
-    
+    conf_icon = "✓" if conf_class == "high" else "⚠️️" if conf_class == "medium" else "✗"
+
+    # Source location badge: "p.3 · L42 · Specifications Table"
+    source_info = ""
+    page_part = f"p.{datapoint.source_page}" if datapoint.source_page else ""
+    line_part = f"L{datapoint.source_line}" if datapoint.source_line is not None else ""
+    loc_part = datapoint.source_location or ""
+    sep1 = " · " if page_part and (line_part or loc_part) else ""
+    sep2 = " · " if line_part and loc_part else ""
+    source_info = f'<span style="color: #888; font-size: 0.8rem;"> 📄 {page_part}{sep1}{line_part}{sep2}{loc_part}</span>'
+
     st.markdown(f"""
     <div class="datapoint-row">
         <div style="display: flex; justify-content: space-between; align-items: start;">
             <div>
                 <strong>#{datapoint.id}</strong> {datapoint.aligned_datapoint}
+                {source_info}
                 <br>
                 <span style="color: #666; font-size: 0.85rem;">
                     {datapoint.impact_category} → {datapoint.impact_subcategory}
@@ -591,9 +605,9 @@ def render_graph_view():
     # Export section
     st.divider()
     st.subheader("Export")
-    
-    exp_col1, exp_col2, exp_col3 = st.columns(3)
-    
+
+    exp_col1, exp_col2, exp_col3, exp_col4 = st.columns(4)
+
     with exp_col1:
         json_str = json.dumps(graph.to_dict(), indent=2)
         st.download_button(
@@ -603,7 +617,7 @@ def render_graph_view():
             mime="application/json",
             use_container_width=True
         )
-    
+
     with exp_col2:
         md_str = graph.to_markdown()
         st.download_button(
@@ -613,8 +627,18 @@ def render_graph_view():
             mime="text/markdown",
             use_container_width=True
         )
-    
+
     with exp_col3:
+        csv_str = graph.to_csv()
+        st.download_button(
+            "📊 Download CSV",
+            data=csv_str,
+            file_name=f"{graph.document_name}.datapoints.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
+
+    with exp_col4:
         if st.button("📋 Copy JSON", use_container_width=True):
             st.code(json_str, language="json")
             st.success("JSON displayed above — copy manually")
@@ -622,6 +646,11 @@ def render_graph_view():
 
 def render_upload_pdf():
     """PDF Upload and extraction view."""
+    
+    # If user has navigated away, show nothing (prevents flash on transition)
+    if st.session_state.get('nav_selection') != "📤 Upload PDF":
+        return
+    
     st.subheader("Upload PDF Document")
     
     # Check OpenRouter configuration
@@ -704,18 +733,18 @@ def render_upload_pdf():
         if st.button("🔍 Extract ACER Relationships", type="primary", use_container_width=True):
             with st.spinner("Extracting data from document..."):
                 try:
-                    # Read PDF text using pdfplumber
-                    
+                    # Read PDF text using pdfplumber (per-page for line tracking)
                     pdf_bytes = uploaded_file.getvalue()
                     document_text = ""
+                    page_texts = []
                     page_count = 0
-                    
+
                     with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
                         page_count = len(pdf.pages)
                         for page in pdf.pages:
-                            text = page.extract_text()
-                            if text:
-                                document_text += text + "\n\n"
+                            text = page.extract_text() or ""
+                            page_texts.append(text)
+                            document_text += text + "\n\n"
                     
                     # Check if OpenRouter is configured
                     if openrouter_enabled and openrouter_api_key:
@@ -725,7 +754,8 @@ def render_upload_pdf():
                         llm_result = extract_with_openrouter(
                             api_key=openrouter_api_key,
                             model_id=openrouter_model,
-                            document_text=document_text[:15000] if document_text else "",  # Limit text length
+                            document_text=document_text[:15000] if document_text else "",
+                            page_texts=page_texts,
                             filename=uploaded_file.name
                         )
                         
@@ -832,6 +862,8 @@ def render_upload_pdf():
                                 dp_name = dp.get('aligned_datapoint', 'Unknown') or 'Unknown'
                                 val = dp.get('value', '') or ''
                                 unit = dp.get('unit', '') or ''
+                                src_page = dp.get('source_page', '') or ''
+                                src_loc = dp.get('source_location', '') or ''
                             elif hasattr(dp, 'aligned_datapoint'):
                                 conf = getattr(dp, 'confidence', 0.5) or 0.5
                                 conf_class = "✓" if conf >= 0.85 else "⚠️" if conf >= 0.6 else "✗"
@@ -839,13 +871,21 @@ def render_upload_pdf():
                                 dp_name = getattr(dp, 'aligned_datapoint', 'Unknown') or 'Unknown'
                                 val = getattr(dp, 'value', '') or ''
                                 unit = getattr(dp, 'unit', '') or ''
+                                src_page = getattr(dp, 'source_page', '') or ''
+                                src_loc = getattr(dp, 'source_location', '') or ''
                             else:
                                 continue
-                            
+
+                            page_str = f"p.{src_page}" if src_page else ""
+                            loc_str = src_loc or ""
+                            sep = " · " if page_str and loc_str else ""
+                            source_str = f"{page_str}{sep}{loc_str}"
+
                             dp_data.append({
                                 "Category": (cat[:20] + "..." if len(cat) > 20 else cat),
                                 "Datapoint": (dp_name[:30] + "..." if len(dp_name) > 30 else dp_name),
                                 "Value": f"{val} {unit}".strip(),
+                                "Source": source_str,
                                 "Conf": conf_class
                             })
                         

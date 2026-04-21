@@ -47,7 +47,8 @@ class Datapoint:
     extraction_confidence: Optional[float] = None  # Did we read the PDF correctly?
     alignment_confidence: Optional[float] = None   # Did we map to the right ACER datapoint?
     source_page: Optional[str] = None
-    source_location: Optional[str] = None
+    source_line: Optional[int] = None   # Line number within the page
+    source_location: Optional[str] = None  # Section/table name within the page
     requirement_sources: list[str] = field(default_factory=list)
     status: str = "verified"
     
@@ -81,6 +82,7 @@ class Datapoint:
                 "overall": self.confidence
             },
             "sourcePage": self.source_page,
+            "sourceLine": self.source_line,
             "sourceLocation": self.source_location,
             "requirementSources": self.requirement_sources,
             "status": self.status
@@ -377,3 +379,45 @@ class AcerGraph:
         ])
         
         return "\n".join(lines)
+
+    def to_csv(self) -> str:
+        """Export datapoints to CSV format for spreadsheet analysis."""
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Header row
+        writer.writerow([
+            "Datapoint ID",
+            "Aligned Datapoint",
+            "Value",
+            "Unit",
+            "Impact Category",
+            "Impact Subcategory",
+            "Confidence",
+            "Source Page",
+            "Source Line",
+            "Source Location",
+            "Status",
+        ])
+
+        # Datapoint rows
+        if self.has_datapoint and isinstance(self.has_datapoint.value, list):
+            for dp in self.has_datapoint.value:
+                writer.writerow([
+                    dp.id,
+                    dp.aligned_datapoint,
+                    dp.value,
+                    dp.unit or "",
+                    dp.impact_category,
+                    dp.impact_subcategory,
+                    f"{dp.confidence:.1%}",
+                    dp.source_page or "",
+                    dp.source_line if dp.source_line is not None else "",
+                    dp.source_location or "",
+                    dp.status,
+                ])
+
+        return output.getvalue()
