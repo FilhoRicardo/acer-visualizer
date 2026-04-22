@@ -10,10 +10,11 @@ import io
 from datetime import datetime
 import pdfplumber
 
-# Import models
+# Import models — use absolute imports from project root
 import sys
-sys.path.insert(0, 'src')
-from models import (
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from src.models import (
     AcerGraph, 
     Relationship, 
     Datapoint,
@@ -748,10 +749,18 @@ def render_upload_pdf():
                             page_texts.append(text)
                             document_text += text + "\n\n"
                     
-                    # Check if OpenRouter is configured
+                    # Warn if document was truncated for LLM input
+                    if len(document_text) > 15000:
+                        st.warning(
+                            f"⚠️ Document truncated: {len(document_text):,} chars → sending first 15,000 chars to LLM. "
+                            "Long documents may have some data beyond page 5 missed.",
+                            icon="📄"
+                        )
                     if openrouter_enabled and openrouter_api_key:
                         # Use OpenRouter for extraction
-                        st.info(f"Using {get_display_name(openrouter_model)} for extraction...")
+                        # Show extraction progress
+                        progress_bar = st.progress(0, text="Preparing document...")
+                        progress_bar.progress(20, text="Sending to LLM...")
                         
                         llm_result = extract_with_openrouter(
                             api_key=openrouter_api_key,
@@ -760,9 +769,11 @@ def render_upload_pdf():
                             page_texts=page_texts,
                             filename=uploaded_file.name
                         )
+                        progress_bar.progress(80, text="Parsing LLM response...")
                         
                         # Use LLM result directly (raw dict), guard against None
                         extraction = llm_result if isinstance(llm_result, dict) else {}
+                        progress_bar.progress(100, text="Done!")
                         if not extraction:
                             st.error("LLM returned no data. Please try again or use demo mode.")
                             st.stop()
@@ -1110,9 +1121,14 @@ def render_settings():
     
     # Use recommended models only after key has been validated
     if key_validated and api_key:
-        with st.spinner("Fetching available models..."):
-            available_models = fetch_available_models(api_key)
-            
+        # Cache model list in session_state to avoid re-fetching on every render
+        cache_key = f"models_{api_key[:8]}"  # keyed by first 8 chars of key
+        if cache_key not in st.session_state:
+            with st.spinner("Fetching available models..."):
+                available_models = fetch_available_models(api_key)
+            st.session_state[cache_key] = available_models
+        else:
+            available_models = st.session_state[cache_key]
         if available_models:
             model_options = [m['id'] for m in available_models]
             selected_model = st.selectbox(

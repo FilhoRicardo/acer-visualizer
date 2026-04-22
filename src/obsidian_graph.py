@@ -325,7 +325,7 @@ def create_obsidian_graph_html(graph: AcerGraph, height: str = "650px") -> str:
         </div>
     </div>
     
-    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js" integrity="sha384-nZ9T6N0h0Mqr8/2LZ0iW2u3S2i3T4T0M0M0M0M0M0M0M0M0M0M0M0M0M0M0" crossorigin="anonymous"></script>
     <script>""" + js + """</script>
 </body>
 </html>"""

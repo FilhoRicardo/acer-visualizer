@@ -8,6 +8,9 @@ from dataclasses import dataclass, field
 from typing import Optional
 from datetime import datetime
 
+# Reuse the canonical Datapoint from the models package
+from models.acer_graph import Datapoint
+
 
 @dataclass
 class ExtractedMetadata:
@@ -26,21 +29,6 @@ class EquipmentInfo:
     manufacturer: Optional[str] = None
     model_number: Optional[str] = None
     serial_number: Optional[str] = None
-
-
-@dataclass
-class Datapoint:
-    """Extracted data point from document."""
-    aligned_datapoint: str
-    value: str
-    unit: str = ""
-    normalized_value: Optional[str] = None
-    confidence: float = 0.5
-    impact_category: Optional[str] = None  # ACER impact category
-    impact_subcategory: Optional[str] = None
-    source_page: Optional[str] = None
-    source_line: Optional[int] = None
-    source_location: Optional[str] = None
 
 
 @dataclass
@@ -80,6 +68,7 @@ def extract_from_text(filename: str, text: str) -> dict:
         value = match.group(1)
         unit = match.group(2)
         datapoints.append(Datapoint(
+            id=len(datapoints) + 1,
             aligned_datapoint="Cooling Capacity",
             impact_category="Energy Performance",
             impact_subcategory="Capacity",
@@ -95,6 +84,7 @@ def extract_from_text(filename: str, text: str) -> dict:
     # Efficiency patterns
     for match in re.finditer(r'(?:EER|IEER|SEER)[:\s]+(\d+(?:\.\d+)?)', text, re.I):
         datapoints.append(Datapoint(
+            id=len(datapoints) + 1,
             aligned_datapoint="Energy Efficiency Ratio",
             impact_category="Energy Performance",
             impact_subcategory="Efficiency Rating",
@@ -109,6 +99,7 @@ def extract_from_text(filename: str, text: str) -> dict:
     # Flow rate patterns
     for match in re.finditer(r'(\d+(?:,\d{3})*)\s*(CFM|cfm|L/s|L/s)', text):
         datapoints.append(Datapoint(
+            id=len(datapoints) + 1,
             aligned_datapoint="Airflow Rate",
             impact_category="Energy Performance",
             impact_subcategory="Airflow",
@@ -122,6 +113,7 @@ def extract_from_text(filename: str, text: str) -> dict:
     # Weight patterns
     for match in re.finditer(r'(\d+(?:,\d{3})*)\s*(lbs?|kg)', text, re.I):
         datapoints.append(Datapoint(
+            id=len(datapoints) + 1,
             aligned_datapoint="Unit Weight",
             impact_category="Material Efficiency",
             impact_subcategory="Weight",
