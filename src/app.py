@@ -193,10 +193,12 @@ def build_graph_from_extraction(extraction: dict, filename: str) -> AcerGraph:
     )
     
     # Build impact category
-    if isinstance(dp_list[0], dict) if dp_list else False:
-        categories = set(dp.get('impact_category') for dp in dp_list if isinstance(dp, dict) and dp.get('impact_category'))
-    else:
-        categories = set(getattr(dp, 'impact_category', '') for dp in dp_list if getattr(dp, 'impact_category', ''))
+    categories = set()
+    if dp_list:
+        if isinstance(dp_list[0], dict):
+            categories = {dp.get('impact_category') for dp in dp_list if isinstance(dp, dict) and dp.get('impact_category')}
+        else:
+            categories = {getattr(dp, 'impact_category', '') for dp in dp_list if getattr(dp, 'impact_category', '')}
     impact_cat_value = ", ".join(sorted(categories)) if categories else None
     impact_cat_rel = Relationship(
         name="hasImpactCategory",
@@ -1087,9 +1089,14 @@ def render_settings():
             if api_key and validate_api_key(api_key):
                 st.session_state['openrouter_api_key'] = api_key
                 st.session_state['openrouter_enabled'] = True
+                st.session_state['openrouter_key_validated'] = True
                 st.success("API key validated!")
             else:
+                st.session_state['openrouter_key_validated'] = False
                 st.error("Invalid API key")
+    
+    # Track whether key was already validated on this session_state value
+    key_validated = st.session_state.get('openrouter_key_validated', False)
     
     st.caption("Don't have a key? Get one at [openrouter.ai](https://openrouter.ai/keys)")
     
@@ -1101,8 +1108,8 @@ def render_settings():
     model_options = []
     selected_model = st.session_state.get('openrouter_model', RECOMMENDED_MODELS[0])
     
-    # Use recommended models if API key is set
-    if api_key and validate_api_key(api_key):
+    # Use recommended models only after key has been validated
+    if key_validated and api_key:
         with st.spinner("Fetching available models..."):
             available_models = fetch_available_models(api_key)
             

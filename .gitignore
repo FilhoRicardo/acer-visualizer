@@ -1,31 +1,8 @@
-# Python
 __pycache__/
-*.py[cod]
 *.pyc
+.pytest_cache/
 *.egg-info/
-dist/
-build/
-
-# Streamlit
-.streamlit/
-
-# Virtual env
-venv/
 .venv/
+venv/
 env/
-.env
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Local data / uploads
-*.pdf
-*.acer.json
-
-# Logs
-*.log
+*.egg-info/

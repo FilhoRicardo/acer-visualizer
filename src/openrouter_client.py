@@ -66,11 +66,15 @@ def fetch_available_models(api_key: str) -> list[dict]:
         models = data.get("data", [])
         
         # Return list of (id, name) tuples sorted by popularity
-        # Filter: include models that are NOT GPT OR are Claude (avoid cheap/noisy GPT variants, keep Claude family)
+        # Filter: include Claude models, and any non-GPT open-source models.
+        # Exclude cheap/noisy GPT variants unless they're the only option.
         return [
             {"id": m["id"], "name": m.get("name", m["id"])}
             for m in models
-            if m.get("id") and ("gpt" not in m.get("id", "").lower() or "claude" in m.get("id", "").lower())
+            if m.get("id") and (
+                "claude" in m.get("id", "").lower()
+                or ("gpt" not in m.get("id", "").lower() and m.get("id"))
+            )
         ][:50]  # Limit to top 50 to avoid dropdown overflow
         
     except requests.exceptions.RequestException as e:
@@ -136,7 +140,7 @@ Only extract datapoints you are confident about. If you cannot find a value, omi
 
     # Format document text with page + line markers so the LLM can track source_page and source_line
     formatted_pages = []
-    for page_num, page_text in enumerate(document_text_list, start=1):
+    for page_num, page_text in enumerate(page_texts, start=1):
         lines = page_text.split('\n')
         numbered_lines = [f"[L{i+1}] {line}" for i, line in enumerate(lines) if line.strip()]
         formatted_pages.append(f"[PAGE {page_num}]\n" + "\n".join(numbered_lines))
@@ -211,7 +215,12 @@ def validate_api_key(api_key: str) -> bool:
         )
         return response.status_code == 200
         
-    except Exception:
+    except requests.exceptions.RequestException:
+        return False
+    except Exception as e:
+        # Unexpected error — log it so we know what went wrong
+        import sys
+        sys.stderr.write(f"API key validation unexpected error: {type(e).__name__}: {e}\n")
         return False
 
 
