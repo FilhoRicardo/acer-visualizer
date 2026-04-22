@@ -183,6 +183,8 @@ Return only the JSON object, no additional text. Use the PAGE numbers in your so
         response.raise_for_status()
         
         data = response.json()
+        if not data.get("choices"):
+            raise Exception("OpenRouter returned no choices — possible rate limit or malformed response.")
         content = data["choices"][0]["message"]["content"]
         
         # Parse JSON from response (handle potential markdown code blocks)
